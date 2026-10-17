@@ -1,5 +1,8 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.http import HttpResponse
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import (
     User,
@@ -27,6 +30,13 @@ from .models import (
     TransfertsStock,
     UserDepots,
     Ventes,
+)
+from .services import (
+    creer_qr_code,
+    generer_code_lot,
+    marquer_envoyes_au_fournisseur,
+    pdf_etiquettes,
+    regenerer_qr_code,
 )
 
 
@@ -123,6 +133,26 @@ class UserAdmin(DjangoUserAdmin):
         ),
     )
 
+    # Formulaire « Ajouter un utilisateur » : la table users exige
+    # prénom, nom et rôle (NOT NULL), absents du formulaire Django standard.
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "username",
+                    "first_name",
+                    "last_name",
+                    "role",
+                    "depot",
+                    "password1",
+                    "password2",
+                ),
+            },
+        ),
+    )
+
 
 @admin.register(Roles)
 class RolesAdmin(admin.ModelAdmin):
@@ -174,7 +204,6 @@ class FournisseursAdmin(admin.ModelAdmin):
         "telephone",
         "email",
     )
-# Ajoutez ces lignes ici :
     readonly_fields = (
         "created_at",
         "updated_at",
@@ -202,10 +231,10 @@ class ClientsAdmin(admin.ModelAdmin):
         "telephone",
         "email",
     )
-readonly_fields = (
-    "created_at",
-    "updated_at",
-)
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
 
 @admin.register(CategoriesLots)
 class CategoriesLotsAdmin(admin.ModelAdmin):
@@ -272,10 +301,10 @@ class DepotsAdmin(admin.ModelAdmin):
         "adresse",
         "telephone",
     )
-readonly_fields = (
-    "created_at",
-    "updated_at",
-)
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
 
 @admin.register(Conteneurs)
 class ConteneursAdmin(admin.ModelAdmin):
@@ -299,15 +328,41 @@ class ConteneursAdmin(admin.ModelAdmin):
         "pays_origine",
         "fournisseur__nom",
     )
-readonly_fields = (
-    "created_at",
-    "updated_at",
-)
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+# ---------- Lots et QR codes ----------
+
+def _lien_etiquette(qr_code):
+    if not qr_code or not qr_code.pk:
+        return "—"
+    url = reverse("core:qr_code_png", args=[qr_code.pk])
+    return format_html(
+        '<a href="{0}" target="_blank"><img src="{0}" style="height:160px;border:1px solid #ccc"></a><br>'
+        '<a href="{0}?telecharger=1">Télécharger l\'étiquette (PNG)</a>',
+        url,
+    )
+
+
+class QrCodesInline(admin.TabularInline):
+    model = QrCodes
+    extra = 0
+    can_delete = False
+    fields = ("code", "version", "actif", "date_generation", "date_envoi_fournisseur", "date_activation")
+    readonly_fields = fields
+    ordering = ("-version",)
+    verbose_name_plural = "Historique des QR codes"
+
+    def has_add_permission(self, request, obj=None):
+        # Les QR codes sont créés automatiquement, jamais à la main.
+        return False
+
 
 @admin.register(Lots)
 class LotsAdmin(admin.ModelAdmin):
     list_display = (
-        "id",
         "code_lot",
         "conteneur",
         "categorie_lot",
@@ -316,35 +371,102 @@ class LotsAdmin(admin.ModelAdmin):
         "statut_logistique",
         "statut_ouverture",
         "date_reception",
+        "qr_envoye",
     )
 
     list_filter = (
         "statut_logistique",
         "statut_ouverture",
         "categorie_lot",
+        "conteneur",
     )
 
     search_fields = (
         "code_lot",
         "conteneur__numero_conteneur",
+        "qr_codes__code",
     )
-    
-readonly_fields = (
-    "created_at",
-    "updated_at",
-)
+
+    list_select_related = ("conteneur", "categorie_lot")
+
+    readonly_fields = (
+        "code_lot",
+        "etiquette_qr",
+        "created_at",
+        "updated_at",
+    )
+
+    fieldsets = (
+        ("Identification", {"fields": ("code_lot", "conteneur", "categorie_lot")}),
+        ("Informations fournisseur", {"fields": ("poids_kg", "prix_achat", "date_creation")}),
+        ("Suivi", {"fields": ("statut_logistique", "date_reception", "statut_ouverture", "date_ouverture", "notes")}),
+        ("QR code", {"fields": ("etiquette_qr",)}),
+        ("Dates techniques", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
+    )
+
+    inlines = (QrCodesInline,)
+    actions = ("imprimer_etiquettes", "marquer_qr_envoyes", "regenerer_qr")
+
+    @admin.display(description="Étiquette QR")
+    def etiquette_qr(self, obj):
+        if not obj.pk:
+            return "Le code et le QR code seront générés automatiquement à l'enregistrement."
+        return _lien_etiquette(obj.qr_actif)
+
+    @admin.display(description="QR envoyé", boolean=True)
+    def qr_envoye(self, obj):
+        qr = obj.qr_actif
+        return bool(qr and qr.date_envoi_fournisseur)
+
+    def save_model(self, request, obj, form, change):
+        # L'admin enregistre déjà dans une transaction : le verrou de
+        # generer_code_lot() est donc tenu jusqu'à l'insertion du lot et de son QR.
+        if not change:
+            obj.code_lot = generer_code_lot()
+            super().save_model(request, obj, form, change)
+            creer_qr_code(obj)
+        else:
+            super().save_model(request, obj, form, change)
+
+    @admin.action(description="Imprimer les étiquettes QR (PDF)")
+    def imprimer_etiquettes(self, request, queryset):
+        qr_codes = list(
+            QrCodes.objects.filter(lot__in=queryset, actif=True)
+            .select_related("lot__categorie_lot", "lot__conteneur")
+            .order_by("lot__code_lot")
+        )
+        if not qr_codes:
+            self.message_user(request, "Aucun QR code actif dans la sélection.", messages.WARNING)
+            return None
+        reponse = HttpResponse(pdf_etiquettes(qr_codes), content_type="application/pdf")
+        reponse["Content-Disposition"] = 'attachment; filename="etiquettes_qr_friplux.pdf"'
+        return reponse
+
+    @admin.action(description="Marquer les QR comme envoyés au fournisseur")
+    def marquer_qr_envoyes(self, request, queryset):
+        nombre = marquer_envoyes_au_fournisseur(QrCodes.objects.filter(lot__in=queryset, actif=True))
+        self.message_user(request, f"{nombre} QR code(s) marqué(s) comme envoyé(s).", messages.SUCCESS)
+
+    @admin.action(description="Remplacer le QR code (étiquette perdue ou abîmée)")
+    def regenerer_qr(self, request, queryset):
+        nouveaux = [regenerer_qr_code(lot).code for lot in queryset]
+        self.message_user(
+            request,
+            "Nouveaux QR codes : " + ", ".join(nouveaux) + ". Les anciennes étiquettes ne sont plus valables.",
+            messages.WARNING,
+        )
+
 
 @admin.register(QrCodes)
 class QrCodesAdmin(admin.ModelAdmin):
     list_display = (
-        "id",
         "code",
         "lot",
         "version",
+        "actif",
         "date_generation",
         "date_envoi_fournisseur",
         "date_activation",
-        "actif",
     )
 
     list_filter = (
@@ -356,6 +478,23 @@ class QrCodesAdmin(admin.ModelAdmin):
         "code",
         "lot__code_lot",
     )
+
+    list_select_related = ("lot",)
+
+    fields = ("code", "lot", "version", "actif", "date_generation", "date_envoi_fournisseur", "date_activation", "etiquette")
+    # Code, lot, version et état actif sont gérés uniquement par Frip'Lux
+    # (création du lot, action « Remplacer le QR code »).
+    readonly_fields = ("code", "lot", "version", "actif", "date_generation", "etiquette")
+
+    @admin.display(description="Étiquette")
+    def etiquette(self, obj):
+        return _lien_etiquette(obj)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 # ============================================================

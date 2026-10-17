@@ -1,4 +1,7 @@
+from decimal import Decimal
 
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
@@ -152,6 +155,16 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
+
+    def save(self, *args, **kwargs):
+        # Les colonnes created_at / updated_at sont NOT NULL en base.
+        # Django envoie NULL si on ne les renseigne pas : on les remplit ici,
+        # quel que soit le chemin de création (admin, shell, createsuperuser).
+        now = timezone.now()
+        if self.created_at is None:
+            self.created_at = now
+        self.updated_at = now
+        super().save(*args, **kwargs)
 
 
 # ============================================================
@@ -448,40 +461,77 @@ class LignesVente(models.Model):
         db_table = 'lignes_vente'
 
 
+class StatutLogistique(models.TextChoices):
+    # Valeurs identiques à la contrainte chk_lots_statut_logistique
+    CREE = "CREE", "Créé"
+    EN_TRANSIT = "EN_TRANSIT", "En transit"
+    RECU = "RECU", "Reçu"
+    ANNULE = "ANNULE", "Annulé"
+
+
+class StatutOuverture(models.TextChoices):
+    # Valeurs identiques à la contrainte chk_lots_statut_ouverture
+    NON_OUVERT = "NON_OUVERT", "Non ouverte"
+    OUVERT = "OUVERT", "Ouverte"
+
+
 class Lots(models.Model):
     id = models.BigAutoField(primary_key=True)
-    code_lot = models.CharField(unique=True, max_length=50)
+    code_lot = models.CharField(
+        "code du lot",
+        unique=True,
+        max_length=50,
+        help_text="Généré automatiquement à la création (FRPLX-LOT-AAAA-NNNNNN).",
+    )
 
     conteneur = models.ForeignKey(
         Conteneurs,
-        models.DO_NOTHING
+        models.DO_NOTHING,
+        related_name="lots",
     )
 
     categorie_lot = models.ForeignKey(
         CategoriesLots,
-        models.DO_NOTHING
+        models.DO_NOTHING,
+        verbose_name="catégorie",
     )
 
     poids_kg = models.DecimalField(
+        "poids (kg)",
         max_digits=10,
-        decimal_places=2
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
 
     prix_achat = models.DecimalField(
+        "prix d'achat",
         max_digits=15,
-        decimal_places=2
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))],
     )
 
-    date_creation = models.DateField()
+    date_creation = models.DateField("date de création", default=timezone.localdate)
     date_reception = models.DateField(
+        "date de réception",
         blank=True,
         null=True
     )
 
-    statut_logistique = models.CharField(max_length=30)
-    statut_ouverture = models.CharField(max_length=20)
+    statut_logistique = models.CharField(
+        "statut logistique",
+        max_length=30,
+        choices=StatutLogistique.choices,
+        default=StatutLogistique.CREE,
+    )
+    statut_ouverture = models.CharField(
+        "statut d'ouverture",
+        max_length=20,
+        choices=StatutOuverture.choices,
+        default=StatutOuverture.NON_OUVERT,
+    )
 
     date_ouverture = models.DateTimeField(
+        "date d'ouverture",
         blank=True,
         null=True
     )
@@ -497,6 +547,32 @@ class Lots(models.Model):
     class Meta:
         managed = False
         db_table = 'lots'
+        verbose_name = "lot (balle)"
+        verbose_name_plural = "lots (balles)"
+
+    def __str__(self):
+        return self.code_lot or f"Lot #{self.pk}"
+
+    def clean(self):
+        # Reprend les contraintes CHECK de la base pour afficher un message
+        # clair dans le formulaire au lieu d'une erreur PostgreSQL.
+        erreurs = {}
+
+        if self.date_reception and self.date_creation and self.date_reception < self.date_creation:
+            erreurs["date_reception"] = "La date de réception ne peut pas être antérieure à la date de création."
+
+        if self.statut_ouverture == StatutOuverture.OUVERT and not self.date_ouverture:
+            erreurs["date_ouverture"] = "Une balle ouverte doit avoir une date d'ouverture."
+        if self.statut_ouverture == StatutOuverture.NON_OUVERT and self.date_ouverture:
+            erreurs["date_ouverture"] = "Une balle non ouverte ne doit pas avoir de date d'ouverture."
+
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    @property
+    def qr_actif(self):
+        """Le QR code actuellement valable pour ce lot (ou None)."""
+        return self.qr_codes.filter(actif=True).first()
 
 
 class Moratoires(models.Model):
@@ -662,13 +738,17 @@ class QrCodes(models.Model):
     id = models.BigAutoField(primary_key=True)
     code = models.CharField(unique=True, max_length=100)
 
-    lot = models.OneToOneField(
+    # ForeignKey (et non OneToOne) : un lot peut avoir plusieurs versions de
+    # QR code (étiquette abîmée puis réimprimée), une seule étant active.
+    # La base le garantit avec uq_qr_codes_lot_version et uq_qr_codes_active_lot.
+    lot = models.ForeignKey(
         Lots,
-        models.DO_NOTHING
+        models.DO_NOTHING,
+        related_name="qr_codes",
     )
 
-    version = models.IntegerField()
-    date_generation = models.DateTimeField()
+    version = models.IntegerField(default=1)
+    date_generation = models.DateTimeField(default=timezone.now)
 
     date_envoi_fournisseur = models.DateTimeField(
         blank=True,
@@ -680,12 +760,17 @@ class QrCodes(models.Model):
         null=True
     )
 
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
 
     class Meta:
         managed = False
         db_table = 'qr_codes'
         unique_together = (('lot', 'version'),)
+        verbose_name = "QR code"
+        verbose_name_plural = "QR codes"
+
+    def __str__(self):
+        return self.code
 
 
 class Stocks(models.Model):
