@@ -1,5 +1,5 @@
 """
-Logique métier Frip'Lux : codes de lots et QR codes.
+Logique métier Frip'Lux : codes de lots, QR codes et étiquettes.
 
 Règles appliquées :
 - Code lot : FRPLX-LOT-<année>-<numéro sur 6 chiffres>, numérotation qui repart à 1 chaque année.
@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 from django.db import connection, transaction
 from django.utils import timezone
 
-from .models import Lots, QrCodes
+from .models import Lots, QrCodes, ReferencesFournisseurs
 
 PREFIXE_LOT = "FRPLX-LOT"
 NUMERO_MAX = 999_999
@@ -29,6 +29,16 @@ NUMERO_MAX = 999_999
 # Identifiant arbitraire (mais fixe) du verrou PostgreSQL qui sérialise la
 # génération des codes de lots. Ne pas le réutiliser pour autre chose.
 CLE_VERROU_CODES_LOTS = 2026_0001
+
+
+# Relations à charger pour dessiner une étiquette sans requêtes en cascade.
+RELATIONS_ETIQUETTE = (
+    "lot__categorie_lot",
+    "lot__conteneur",
+    "lot__categorie_produit",
+    "lot__qualite",
+    "lot__reference_fournisseur",
+)
 
 
 class ErreurCodeLot(Exception):
@@ -39,19 +49,22 @@ class ErreurCodeLot(Exception):
 # Codes de lots
 # ------------------------------------------------------------------
 
-def generer_code_lot(annee=None):
+def generer_codes_lots(nombre, annee=None):
     """
-    Retourne le prochain code libre, par exemple FRPLX-LOT-2026-000001.
+    Retourne les `nombre` prochains codes libres, consécutifs,
+    par exemple [FRPLX-LOT-2026-000001, FRPLX-LOT-2026-000002, ...].
 
     Doit être appelée DANS une transaction (transaction.atomic) qui insère
-    ensuite le lot : le verrou est conservé jusqu'à la fin de la transaction,
-    ce qui empêche deux créations simultanées d'obtenir le même numéro.
+    ensuite les lots : le verrou est conservé jusqu'à la fin de la transaction,
+    ce qui empêche deux créations simultanées d'obtenir les mêmes numéros.
     """
     if not connection.in_atomic_block:
         raise ErreurCodeLot(
-            "generer_code_lot() doit être appelée dans transaction.atomic(), "
+            "La génération des codes doit se faire dans transaction.atomic(), "
             "sinon deux créations simultanées pourraient obtenir le même code."
         )
+    if nombre < 1:
+        return []
 
     annee = annee or timezone.localdate().year
 
@@ -67,11 +80,16 @@ def generer_code_lot(annee=None):
         .first()
     )
 
-    numero = int(dernier_code[-6:]) + 1 if dernier_code else 1
-    if numero > NUMERO_MAX:
-        raise ErreurCodeLot(f"Plus de numéros disponibles pour l'année {annee}.")
+    premier = int(dernier_code[-6:]) + 1 if dernier_code else 1
+    if premier + nombre - 1 > NUMERO_MAX:
+        raise ErreurCodeLot(f"Plus assez de numéros disponibles pour l'année {annee}.")
 
-    return f"{prefixe}{numero:06d}"
+    return [f"{prefixe}{numero:06d}" for numero in range(premier, premier + nombre)]
+
+
+def generer_code_lot(annee=None):
+    """Retourne le prochain code libre (voir generer_codes_lots)."""
+    return generer_codes_lots(1, annee)[0]
 
 
 # ------------------------------------------------------------------
@@ -111,6 +129,33 @@ def creer_lot(**champs):
     lot.save()
     creer_qr_code(lot)
     return lot
+
+
+@transaction.atomic
+def creer_lots_en_serie(lots):
+    """
+    Enregistre une liste de lots (non sauvegardés, sans code) avec des codes
+    consécutifs et un QR code chacun, en une seule transaction.
+    Utilisé par l'import des fiches fournisseurs (plusieurs centaines de balles).
+    """
+    for lot in lots:
+        if lot.code_lot:
+            raise ErreurCodeLot("Le code du lot est généré automatiquement : ne pas le fournir.")
+
+    codes = generer_codes_lots(len(lots))
+    for lot, code in zip(lots, codes):
+        lot.code_lot = code
+        # Clés étrangères et unicité : vérifiées par PostgreSQL (évite des milliers de requêtes).
+        lot.clean_fields(exclude=["conteneur", "categorie_lot", "categorie_produit", "qualite", "reference_fournisseur"])
+        lot.clean()
+
+    lots = Lots.objects.bulk_create(lots)
+    maintenant = timezone.now()
+    QrCodes.objects.bulk_create(
+        QrCodes(lot=lot, code=code_qr_pour(lot, 1), version=1, date_generation=maintenant, actif=True)
+        for lot in lots
+    )
+    return lots
 
 
 @transaction.atomic
@@ -200,12 +245,19 @@ def image_etiquette(qr_code):
     largeur = max(LARGEUR_ETIQUETTE, image.width)
     largeur_texte_max = largeur - 40
 
-    textes = [
-        (lot.code_lot, 40),
-        (f"{lot.categorie_lot}  ·  Conteneur {lot.conteneur}", 26),
-    ]
+    classement = lot.categorie_produit.nom if lot.categorie_produit_id else ""
+    classement = f"{lot.categorie_lot} › {classement}" if classement else str(lot.categorie_lot)
+    if lot.qualite_id:
+        classement += f"  ·  {lot.qualite}"
+
+    textes = [(lot.code_lot, 40)]
+    if lot.reference_fournisseur_id:
+        # Indispensable pour que le fournisseur colle la bonne étiquette sur la bonne balle.
+        textes.append((str(lot.reference_fournisseur), 26))
+    textes.append((classement, 24))
+    textes.append((f"Conteneur {lot.conteneur}", 22))
     if qr_code.version > 1:
-        textes.append((f"Étiquette version {qr_code.version}", 22))
+        textes.append((f"Étiquette version {qr_code.version}", 20))
 
     mesure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     lignes = [(texte, _police_ajustee(mesure, texte, taille, largeur_texte_max)) for texte, taille in textes]
@@ -234,9 +286,61 @@ def png_qr(qr_code):
 
 def pdf_etiquettes(qr_codes):
     """PDF avec une étiquette par page, à envoyer au fournisseur ou à imprimer."""
-    images = [image_etiquette(qr) for qr in qr_codes]
+    # Noir et blanc pur (seuil net, sans tramage) : ~3 Ko par étiquette au lieu de ~36 Ko,
+    # soit environ 2 Mo pour un conteneur de 570 balles, envoyable par e-mail.
+    images = [
+        image_etiquette(qr).convert("L").point(lambda p: 255 if p > 160 else 0, mode="1")
+        for qr in qr_codes
+    ]
     if not images:
         raise ValueError("Aucun QR code à imprimer.")
     tampon = io.BytesIO()
     images[0].save(tampon, format="PDF", save_all=True, append_images=images[1:], resolution=200)
     return tampon.getvalue()
+
+
+# ------------------------------------------------------------------
+# Import d'une fiche fournisseur
+# ------------------------------------------------------------------
+
+@transaction.atomic
+def importer_fiche(conteneur, date_fiche, lignes, classements):
+    """
+    Crée les balles d'une fiche fournisseur.
+
+    - lignes : LigneFiche (voir import_fiche.py)
+    - classements : pour chaque ligne, dict {categorie_lot, categorie_produit, qualite}
+      validé par l'utilisateur dans l'aperçu.
+
+    Le classement de chaque code article est mémorisé dans le catalogue
+    (références fournisseurs) pour être reconnu aux imports suivants.
+    """
+    from .import_fiche import prix_balle
+
+    fournisseur = conteneur.fournisseur
+    aujourd_hui = timezone.localdate()
+    lots = []
+
+    for ligne, classement in zip(lignes, classements):
+        reference, _ = ReferencesFournisseurs.objects.update_or_create(
+            fournisseur=fournisseur,
+            code=ligne.code,
+            defaults={"libelle": ligne.libelle[:200], **classement},
+        )
+        note = f"Fiche fournisseur du {date_fiche or '?'}, article {ligne.code}. Prix d'achat calculé en EUR ({ligne.prix_kg} €/kg)."
+        for poids in ligne.poids_par_balle():
+            lots.append(
+                Lots(
+                    conteneur=conteneur,
+                    reference_fournisseur=reference,
+                    categorie_lot=classement["categorie_lot"],
+                    categorie_produit=classement["categorie_produit"],
+                    qualite=classement["qualite"],
+                    poids_kg=poids,
+                    prix_achat=prix_balle(poids, ligne.prix_kg),
+                    date_creation=aujourd_hui,
+                    notes=note,
+                )
+            )
+
+    return creer_lots_en_serie(lots)

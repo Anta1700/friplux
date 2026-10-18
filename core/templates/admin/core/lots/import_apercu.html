@@ -1,0 +1,112 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .fiche-resume { display: flex; flex-wrap: wrap; gap: 24px; margin: 8px 0 16px; }
+  .fiche-resume div { background: var(--darkened-bg); padding: 10px 14px; border-radius: 4px; }
+  .fiche-resume strong { display: block; font-size: 1.4em; }
+  table.fiche { width: 100%; }
+  table.fiche td { vertical-align: middle; }
+  table.fiche select { max-width: 210px; }
+  table.fiche .nombre { text-align: right; white-space: nowrap; }
+  .statut { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .85em; white-space: nowrap; }
+  .statut-connue { background: #dff0d8; color: #2d572c; }
+  .statut-proposee { background: #fcf3cf; color: #7d6608; }
+  .statut-a_classer { background: #f8d7da; color: #842029; }
+  tr.section td { background: var(--darkened-bg); font-weight: bold; }
+  .errorlist { margin: 0; }
+  .avertissement { border-left: 4px solid #e0a800; padding: 8px 12px; background: #fff8e1; color: #5c4400; margin-bottom: 8px; }
+  .bloquant { border-left: 4px solid #c00; padding: 8px 12px; background: #fdecea; color: #6b0000; margin-bottom: 8px; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Accueil</a> ›
+  <a href="{% url 'admin:core_lots_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> ›
+  <a href="{% url 'admin:core_lots_import' %}">Importer une fiche fournisseur</a> ›
+  Vérification
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <div class="fiche-resume">
+    <div>Fichier<strong>{{ donnees.nom_fichier }}</strong></div>
+    <div>Conteneur choisi<strong>{{ conteneur.numero_conteneur }}</strong></div>
+    <div>Fournisseur<strong>{{ conteneur.fournisseur }}</strong></div>
+    <div>Date de la fiche<strong>{{ donnees.date|default:"—" }}</strong></div>
+    <div>Balles à créer<strong>{{ nombre_balles }}</strong></div>
+    <div>Poids total<strong>{{ poids_total|floatformat:0 }} kg</strong></div>
+  </div>
+
+  <p>
+    <span class="statut statut-connue">{{ total_statuts.connue }} déjà connue(s)</span>
+    <span class="statut statut-proposee">{{ total_statuts.proposee }} proposée(s) automatiquement : à vérifier</span>
+    <span class="statut statut-a_classer">{{ total_statuts.a_classer }} à classer</span>
+  </p>
+
+  {% for alerte in alertes_bloquantes %}<div class="bloquant">{{ alerte }}</div>{% endfor %}
+  {% for avertissement in avertissements %}<div class="avertissement">{{ avertissement }}</div>{% endfor %}
+  {% if donnees.ignorees %}
+    <div class="avertissement">
+      Lignes ignorées (sans balles) :
+      {% for l in donnees.ignorees %}« {{ l.texte }} » (ligne {{ l.numero_ligne }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+    </div>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    {{ formset.management_form }}
+
+    <div class="module">
+      <table class="fiche">
+        <thead>
+          <tr>
+            <th>Code</th><th>Article</th><th class="nombre">Balles</th><th class="nombre">Kg / balle</th>
+            <th class="nombre">€ / kg</th><th>Catégorie</th><th>Sous-catégorie</th><th>Qualité</th><th>État</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rangees %}
+            {% ifchanged r.ligne.section %}
+              <tr class="section"><td colspan="9">{{ r.ligne.section|default:"(sans section)" }}</td></tr>
+            {% endifchanged %}
+            <tr>
+              <td>{{ r.ligne.code }}</td>
+              <td>{{ r.ligne.libelle }}</td>
+              <td class="nombre">{{ r.ligne.nombre_balles }}</td>
+              <td class="nombre">{{ r.poids_balle }}</td>
+              <td class="nombre">{{ r.ligne.prix_kg }}</td>
+              <td>{{ r.form.categorie_lot.errors }}{{ r.form.categorie_lot }}</td>
+              <td>{{ r.form.categorie_produit.errors }}{{ r.form.categorie_produit }}</td>
+              <td>{{ r.form.qualite.errors }}{{ r.form.qualite }}</td>
+              <td>
+                {% if r.statut == "connue" %}<span class="statut statut-connue">Connue</span>
+                {% elif r.statut == "proposee" %}<span class="statut statut-proposee">Proposée</span>
+                {% else %}<span class="statut statut-a_classer">À classer</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="help">
+      Le classement choisi ici est mémorisé pour chaque code article : à la prochaine fiche de ce fournisseur,
+      ces lignes seront reconnues automatiquement. Il reste modifiable dans « Références fournisseurs ».
+    </p>
+
+    {% if avertissements %}
+      <p><label><input type="checkbox" name="confirmer_avertissements"> J'ai lu les avertissements ci-dessus et je veux importer quand même.</label></p>
+    {% endif %}
+
+    <div class="submit-row">
+      <input type="submit" class="default" value="Créer les {{ nombre_balles }} balles et leurs QR codes" {% if alertes_bloquantes %}disabled{% endif %}>
+      <input type="submit" name="annuler" value="Annuler" formnovalidate>
+    </div>
+  </form>
+</div>
+{% endblock %}

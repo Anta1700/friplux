@@ -1,3 +1,4 @@
+import unicodedata
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -238,8 +239,14 @@ class CategoriesProduits(models.Model):
         managed = False
         db_table = 'categories_produits'
         unique_together = (('parent', 'nom'),)
+        verbose_name = "sous-catégorie"
+        verbose_name_plural = "sous-catégories"
+
     def __str__(self):
-            return self.nom
+        # « Femme › Pantalons » : plusieurs catégories ont une sous-catégorie du même nom.
+        if self.parent_id:
+            return f"{self.parent.nom} › {self.nom}"
+        return self.nom
 
 
 class Clients(models.Model):
@@ -461,6 +468,76 @@ class LignesVente(models.Model):
         db_table = 'lignes_vente'
 
 
+def _normaliser(texte):
+    """« Bébé » -> « bebe » : compare les noms sans accents ni majuscules."""
+    texte = unicodedata.normalize("NFKD", texte or "")
+    return "".join(c for c in texte if not unicodedata.combining(c)).strip().lower()
+
+
+def sous_categorie_compatible(categorie_lot, categorie_produit):
+    """Vrai si la sous-catégorie appartient bien à la catégorie (ex. Robes ⊂ Femme)."""
+    if not categorie_lot or not categorie_produit:
+        return True
+    parent = categorie_produit.parent
+    return parent is not None and _normaliser(parent.nom) == _normaliser(categorie_lot.nom)
+
+
+class Qualites(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    code = models.CharField(unique=True, max_length=30)
+    nom = models.CharField(unique=True, max_length=80)
+    ordre = models.IntegerField(default=0)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = "qualites"
+        ordering = ("ordre",)
+        verbose_name = "qualité"
+        verbose_name_plural = "qualités"
+
+    def __str__(self):
+        return self.nom
+
+
+class ReferencesFournisseurs(models.Model):
+    """
+    Catalogue : un code article d'un fournisseur (ex. SILTEX 2545 « Robes femme été »)
+    et son classement Frip'Lux. Classée une fois, la référence est reconnue
+    automatiquement aux imports suivants.
+    """
+    id = models.BigAutoField(primary_key=True)
+    fournisseur = models.ForeignKey("Fournisseurs", models.DO_NOTHING)
+    code = models.CharField("code article", max_length=50)
+    libelle = models.CharField("libellé", max_length=200)
+    categorie_lot = models.ForeignKey(CategoriesLots, models.DO_NOTHING, verbose_name="catégorie")
+    categorie_produit = models.ForeignKey(
+        CategoriesProduits, models.DO_NOTHING, blank=True, null=True, verbose_name="sous-catégorie"
+    )
+    qualite = models.ForeignKey(Qualites, models.DO_NOTHING, blank=True, null=True, verbose_name="qualité")
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        managed = False
+        db_table = "references_fournisseurs"
+        unique_together = (("fournisseur", "code"),)
+        verbose_name = "référence fournisseur"
+        verbose_name_plural = "références fournisseurs"
+
+    def __str__(self):
+        return f"{self.code} – {self.libelle}"
+
+    def clean(self):
+        if self.categorie_lot_id and self.categorie_produit_id and not sous_categorie_compatible(
+            self.categorie_lot, self.categorie_produit
+        ):
+            raise ValidationError(
+                {"categorie_produit": f"Cette sous-catégorie n'appartient pas à la catégorie « {self.categorie_lot} »."}
+            )
+
+
 class StatutLogistique(models.TextChoices):
     # Valeurs identiques à la contrainte chk_lots_statut_logistique
     CREE = "CREE", "Créé"
@@ -494,6 +571,32 @@ class Lots(models.Model):
         CategoriesLots,
         models.DO_NOTHING,
         verbose_name="catégorie",
+    )
+
+    categorie_produit = models.ForeignKey(
+        CategoriesProduits,
+        models.DO_NOTHING,
+        blank=True,
+        null=True,
+        verbose_name="sous-catégorie",
+        related_name="lots",
+    )
+
+    qualite = models.ForeignKey(
+        Qualites,
+        models.DO_NOTHING,
+        blank=True,
+        null=True,
+        verbose_name="qualité",
+    )
+
+    reference_fournisseur = models.ForeignKey(
+        ReferencesFournisseurs,
+        models.DO_NOTHING,
+        blank=True,
+        null=True,
+        verbose_name="référence fournisseur",
+        related_name="lots",
     )
 
     poids_kg = models.DecimalField(
@@ -557,6 +660,13 @@ class Lots(models.Model):
         # Reprend les contraintes CHECK de la base pour afficher un message
         # clair dans le formulaire au lieu d'une erreur PostgreSQL.
         erreurs = {}
+
+        if self.categorie_lot_id and self.categorie_produit_id and not sous_categorie_compatible(
+            self.categorie_lot, self.categorie_produit
+        ):
+            erreurs["categorie_produit"] = (
+                f"Cette sous-catégorie n'appartient pas à la catégorie « {self.categorie_lot} »."
+            )
 
         if self.date_reception and self.date_creation and self.date_reception < self.date_creation:
             erreurs["date_reception"] = "La date de réception ne peut pas être antérieure à la date de création."

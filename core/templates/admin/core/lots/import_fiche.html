@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Accueil</a> ›
+  <a href="{% url 'admin:core_lots_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> ›
+  Importer une fiche fournisseur
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>
+    Déposez la fiche de commande envoyée par le fournisseur (une ligne par article, avec le nombre de balles et le poids).
+    Frip'Lux créera <strong>une balle par balle commandée</strong>, chacune avec son code et son QR code.
+    Vous pourrez vérifier le classement de chaque ligne avant que rien ne soit enregistré.
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {% for champ in formulaire %}
+        <div class="form-row{% if champ.errors %} errors{% endif %}">
+          {{ champ.errors }}
+          <div class="flex-container">
+            {{ champ.label_tag }} {{ champ }}
+          </div>
+          {% if champ.help_text %}<div class="help">{{ champ.help_text }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" class="default" value="Lire la fiche">
+    </div>
+  </form>
+</div>
+{% endblock %}

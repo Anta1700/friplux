@@ -1,7 +1,10 @@
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from functools import partial
+
+from django.db.models import Exists, OuterRef
 from django.http import HttpResponse
-from django.urls import reverse
+from django.urls import path, reverse
 from django.utils.html import format_html
 
 from .models import (
@@ -30,11 +33,15 @@ from .models import (
     TransfertsStock,
     UserDepots,
     Ventes,
+    Qualites,
+    ReferencesFournisseurs,
 )
+from .admin_import import vue_apercu, vue_import
 from .services import (
     creer_qr_code,
     generer_code_lot,
     marquer_envoyes_au_fournisseur,
+    RELATIONS_ETIQUETTE,
     pdf_etiquettes,
     regenerer_qr_code,
 )
@@ -268,7 +275,11 @@ class CategoriesProduitsAdmin(admin.ModelAdmin):
 
     list_filter = (
         "actif",
+        ("parent", admin.RelatedOnlyFieldListFilter),
     )
+
+    list_select_related = ("parent",)
+    ordering = ("parent__nom", "nom")
 
     search_fields = (
         "code",
@@ -366,11 +377,12 @@ class LotsAdmin(admin.ModelAdmin):
         "code_lot",
         "conteneur",
         "categorie_lot",
+        "sous_categorie",
+        "qualite",
+        "reference_code",
         "poids_kg",
-        "prix_achat",
         "statut_logistique",
         "statut_ouverture",
-        "date_reception",
         "qr_envoye",
     )
 
@@ -378,6 +390,7 @@ class LotsAdmin(admin.ModelAdmin):
         "statut_logistique",
         "statut_ouverture",
         "categorie_lot",
+        "qualite",
         "conteneur",
     )
 
@@ -385,9 +398,12 @@ class LotsAdmin(admin.ModelAdmin):
         "code_lot",
         "conteneur__numero_conteneur",
         "qr_codes__code",
+        "reference_fournisseur__code",
+        "reference_fournisseur__libelle",
     )
 
-    list_select_related = ("conteneur", "categorie_lot")
+    list_select_related = ("conteneur", "categorie_lot", "categorie_produit", "qualite", "reference_fournisseur")
+    list_per_page = 100
 
     readonly_fields = (
         "code_lot",
@@ -397,7 +413,8 @@ class LotsAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
-        ("Identification", {"fields": ("code_lot", "conteneur", "categorie_lot")}),
+        ("Identification", {"fields": ("code_lot", "conteneur", "reference_fournisseur")}),
+        ("Classement", {"fields": ("categorie_lot", "categorie_produit", "qualite")}),
         ("Informations fournisseur", {"fields": ("poids_kg", "prix_achat", "date_creation")}),
         ("Suivi", {"fields": ("statut_logistique", "date_reception", "statut_ouverture", "date_ouverture", "notes")}),
         ("QR code", {"fields": ("etiquette_qr",)}),
@@ -413,10 +430,40 @@ class LotsAdmin(admin.ModelAdmin):
             return "Le code et le QR code seront générés automatiquement à l'enregistrement."
         return _lien_etiquette(obj.qr_actif)
 
-    @admin.display(description="QR envoyé", boolean=True)
+    @admin.display(description="QR envoyé", boolean=True, ordering="_qr_envoye")
     def qr_envoye(self, obj):
-        qr = obj.qr_actif
-        return bool(qr and qr.date_envoi_fournisseur)
+        return obj._qr_envoye
+
+    @admin.display(description="Sous-catégorie", ordering="categorie_produit__nom")
+    def sous_categorie(self, obj):
+        return obj.categorie_produit.nom if obj.categorie_produit_id else "—"
+
+    @admin.display(description="Réf.", ordering="reference_fournisseur__code")
+    def reference_code(self, obj):
+        return obj.reference_fournisseur.code if obj.reference_fournisseur_id else "—"
+
+    def get_queryset(self, request):
+        # Calculé en une seule requête pour toute la liste (au lieu d'une par ligne).
+        envoye = QrCodes.objects.filter(lot=OuterRef("pk"), actif=True, date_envoi_fournisseur__isnull=False)
+        return super().get_queryset(request).annotate(_qr_envoye=Exists(envoye))
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "categorie_produit":
+            kwargs["queryset"] = (
+                CategoriesProduits.objects.filter(actif=True, parent__isnull=False)
+                .select_related("parent")
+                .order_by("parent__nom", "nom")
+            )
+        elif db_field.name == "reference_fournisseur":
+            kwargs["queryset"] = ReferencesFournisseurs.objects.order_by("code")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_urls(self):
+        urls = [
+            path("importer/", self.admin_site.admin_view(partial(vue_import, self)), name="core_lots_import"),
+            path("importer/verification/", self.admin_site.admin_view(partial(vue_apercu, self)), name="core_lots_import_apercu"),
+        ]
+        return urls + super().get_urls()
 
     def save_model(self, request, obj, form, change):
         # L'admin enregistre déjà dans une transaction : le verrou de
@@ -432,7 +479,7 @@ class LotsAdmin(admin.ModelAdmin):
     def imprimer_etiquettes(self, request, queryset):
         qr_codes = list(
             QrCodes.objects.filter(lot__in=queryset, actif=True)
-            .select_related("lot__categorie_lot", "lot__conteneur")
+            .select_related(*RELATIONS_ETIQUETTE)
             .order_by("lot__code_lot")
         )
         if not qr_codes:
@@ -843,3 +890,38 @@ class AuditLogsAdmin(admin.ModelAdmin):
         "action",
         "table_concernee",
     )
+
+# ============================================================
+# QUALITÉS ET RÉFÉRENCES FOURNISSEURS
+# ============================================================
+
+@admin.register(Qualites)
+class QualitesAdmin(admin.ModelAdmin):
+    list_display = ("ordre", "code", "nom", "actif")
+    list_display_links = ("code", "nom")
+    list_editable = ("ordre", "actif")
+
+
+@admin.register(ReferencesFournisseurs)
+class ReferencesFournisseursAdmin(admin.ModelAdmin):
+    """
+    Catalogue des codes articles fournisseurs et de leur classement.
+    Modifier un classement ici s'applique aux prochains imports (pas aux balles déjà créées).
+    """
+    list_display = ("code", "libelle", "fournisseur", "categorie_lot", "categorie_produit", "qualite", "actif")
+    list_editable = ("categorie_lot", "categorie_produit", "qualite")
+    list_filter = ("fournisseur", "categorie_lot", "qualite", "actif")
+    search_fields = ("code", "libelle")
+    list_select_related = ("fournisseur", "categorie_lot", "categorie_produit__parent", "qualite")
+    ordering = ("fournisseur__nom", "code")
+    readonly_fields = ("created_at", "updated_at")
+    list_per_page = 100
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "categorie_produit":
+            kwargs["queryset"] = (
+                CategoriesProduits.objects.filter(actif=True, parent__isnull=False)
+                .select_related("parent")
+                .order_by("parent__nom", "nom")
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
