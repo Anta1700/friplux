@@ -1,0 +1,119 @@
+{% extends "core/base.html" %}
+{% block titre %}{{ lot.code_lot }}{% endblock %}
+
+{% block entete %}
+<style>
+  .entete-balle { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .code { font-size: 1.35rem; font-weight: 750; letter-spacing: .01em; word-break: break-all; }
+  .classement { font-size: 1.2rem; font-weight: 650; margin: 10px 0 4px; }
+  .qualite { display: inline-block; margin-top: 4px; padding: 4px 12px; border-radius: 999px; background: #f3e6cf; color: #7a4e0f; font-weight: 700; }
+  dl { display: grid; grid-template-columns: minmax(120px, 40%) 1fr; gap: 8px 12px; margin: 0; }
+  dt { color: var(--doux); font-size: .92rem; }
+  dd { margin: 0; font-weight: 550; }
+  .vide { color: #9a9488; font-weight: 400; font-style: italic; }
+  .compteur { display: flex; gap: 10px; }
+  .compteur div { flex: 1; background: var(--fond); border-radius: 10px; padding: 10px; text-align: center; }
+  .compteur strong { display: block; font-size: 1.5rem; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+
+{% if scan and scan.resultat == "QR_REMPLACE" %}
+  <div class="message error">
+    ⚠ Cette étiquette (version {{ scan.qr_code.version }}) a été remplacée{% if qr_actif %} par la version {{ qr_actif.version }}{% endif %}.
+    Retirez-la de la balle et utilisez la nouvelle étiquette.
+  </div>
+{% elif scan %}
+  <div class="message success">✓ Balle identifiée{% if resume.nombre == 1 %} : premier scan de cette balle{% endif %}.</div>
+{% endif %}
+
+<div class="carte">
+  <div class="entete-balle">
+    <div class="code">{{ lot.code_lot }}</div>
+    {% if lot.statut_logistique == StatutLogistique.RECU %}
+      <span class="pastille ok">Reçue</span>
+    {% elif lot.statut_logistique == StatutLogistique.ANNULE %}
+      <span class="pastille erreur">Annulée</span>
+    {% else %}
+      <span class="pastille attente">{{ lot.get_statut_logistique_display }}</span>
+    {% endif %}
+  </div>
+  <div class="classement">
+    {{ lot.categorie_lot }}{% if lot.categorie_produit %} › {{ lot.categorie_produit.nom }}{% endif %}
+  </div>
+  {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% else %}<span class="vide">Qualité non renseignée</span>{% endif %}
+  <p class="discret" style="margin-bottom:0">
+    {% if lot.statut_ouverture == "OUVERT" %}Balle ouverte le {{ lot.date_ouverture|date:"d/m/Y" }}{% else %}Balle non ouverte{% endif %}
+  </p>
+</div>
+
+{% if peut_recevoir %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="recu">
+    <button type="submit" class="bouton succes">✓ Marquer comme reçue</button>
+  </form>
+{% endif %}
+
+<div class="carte">
+  <h2>Annoncé par le fournisseur</h2>
+  <dl>
+    <dt>Référence</dt>
+    <dd>{% if lot.reference_fournisseur %}{{ lot.reference_fournisseur }}{% else %}<span class="vide">Non renseignée</span>{% endif %}</dd>
+    <dt>Poids</dt>
+    <dd>{{ lot.poids_kg }} kg</dd>
+    {% if voir_prix %}
+      <dt>Prix d'achat</dt>
+      <dd>{{ lot.prix_achat }}</dd>
+    {% endif %}
+    <dt>Fournisseur</dt>
+    <dd>{{ lot.conteneur.fournisseur }}</dd>
+    <dt>Conteneur</dt>
+    <dd>{{ lot.conteneur }}</dd>
+    <dt>Commande</dt>
+    <dd>{{ lot.conteneur.date_commande|date:"d/m/Y"|default:"" }}{% if not lot.conteneur.date_commande %}<span class="vide">Non renseignée</span>{% endif %}</dd>
+    <dt>Expédition</dt>
+    <dd>{{ lot.conteneur.date_expedition|date:"d/m/Y"|default:"" }}{% if not lot.conteneur.date_expedition %}<span class="vide">Non renseignée</span>{% endif %}</dd>
+    <dt>Arrivée prévue</dt>
+    <dd>{{ lot.conteneur.date_arrivee_estimee|date:"d/m/Y"|default:"" }}{% if not lot.conteneur.date_arrivee_estimee %}<span class="vide">Non renseignée</span>{% endif %}</dd>
+  </dl>
+</div>
+
+<div class="carte">
+  <h2>Constaté chez Frip'Lux</h2>
+  <dl>
+    <dt>Réception</dt>
+    <dd>
+      {% if lot.date_reception %}
+        {{ lot.date_reception|date:"d/m/Y" }}
+        {% if reception and reception.utilisateur %}<br><span class="discret">par {{ reception.utilisateur.get_full_name|default:reception.utilisateur }}</span>{% endif %}
+      {% else %}<span class="vide">Pas encore reçue</span>{% endif %}
+    </dd>
+    <dt>Étiquette</dt>
+    <dd>
+      {% if qr_actif %}Version {{ qr_actif.version }}
+        {% if qr_actif.date_activation %}<br><span class="discret">activée le {{ qr_actif.date_activation|date:"d/m/Y à H:i" }}</span>{% endif %}
+      {% else %}<span class="vide">Aucune étiquette active</span>{% endif %}
+    </dd>
+  </dl>
+  <div class="compteur" style="margin-top:14px">
+    <div><strong>{{ resume.nombre }}</strong><span class="discret">scan{{ resume.nombre|pluralize }}</span></div>
+    <div><strong>{{ resume.premier.date_scan|date:"d/m"|default:"—" }}</strong><span class="discret">premier scan</span></div>
+    <div><strong>{{ resume.dernier.date_scan|date:"d/m"|default:"—" }}</strong><span class="discret">dernier scan</span></div>
+  </div>
+</div>
+
+{% if lot.notes and voir_prix %}
+{# Notes réservées aux administrateurs : elles peuvent contenir des prix d'achat. #}
+<div class="carte">
+  <h2>Notes</h2>
+  <p style="margin:0">{{ lot.notes|linebreaksbr }}</p>
+</div>
+{% endif %}
+
+<a class="bouton" href="{% url 'core:scanner' %}">Scanner une autre balle</a>
+{% if user.is_staff %}
+  <a class="bouton secondaire" href="{% url 'admin:core_lots_change' lot.pk %}">Ouvrir dans l'administration</a>
+{% endif %}
+{% endblock %}

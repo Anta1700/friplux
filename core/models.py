@@ -157,6 +157,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.username
 
+    def get_full_name(self):
+        nom = f"{self.first_name or ''} {self.last_name or ''}".strip()
+        return nom or self.username
+
+    def get_short_name(self):
+        return self.first_name or self.username
+
     def save(self, *args, **kwargs):
         # Les colonnes created_at / updated_at sont NOT NULL en base.
         # Django envoie NULL si on ne les renseigne pas : on les remplit ici,
@@ -1015,3 +1022,40 @@ class Ventes(models.Model):
     class Meta:
         managed = False
         db_table = 'ventes'
+
+# ============================================================
+# HISTORIQUE DES SCANS
+# ============================================================
+
+class ResultatScan(models.TextChoices):
+    OK = "OK", "Balle trouvée"
+    QR_REMPLACE = "QR_REMPLACE", "Ancienne étiquette (remplacée)"
+    INCONNU = "INCONNU", "Code inconnu"
+
+
+class ScansLots(models.Model):
+    """
+    Une ligne par lecture de QR code. Les compteurs (scans, balles uniques)
+    sont calculés à partir de cette table, jamais saisis à la main.
+    """
+    id = models.BigAutoField(primary_key=True)
+    date_scan = models.DateTimeField("date du scan", default=timezone.now)
+    code_scanne = models.CharField("code lu", max_length=100)
+    resultat = models.CharField("résultat", max_length=20, choices=ResultatScan.choices)
+    lot = models.ForeignKey(Lots, models.DO_NOTHING, blank=True, null=True, related_name="scans")
+    qr_code = models.ForeignKey(QrCodes, models.DO_NOTHING, blank=True, null=True, verbose_name="QR code")
+    categorie_lot = models.ForeignKey(
+        CategoriesLots, models.DO_NOTHING, blank=True, null=True, verbose_name="catégorie (au moment du scan)"
+    )
+    utilisateur = models.ForeignKey("User", models.DO_NOTHING, blank=True, null=True)
+    depot = models.ForeignKey(Depots, models.DO_NOTHING, blank=True, null=True, verbose_name="dépôt")
+
+    class Meta:
+        managed = False
+        db_table = "scans_lots"
+        ordering = ("-date_scan",)
+        verbose_name = "scan de balle"
+        verbose_name_plural = "historique des scans"
+
+    def __str__(self):
+        return f"{self.code_scanne} – {self.date_scan:%d/%m/%Y %H:%M}"

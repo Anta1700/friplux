@@ -30,7 +30,9 @@ if not SECRET_KEY:
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# Adresses autorisées. Pour tester depuis un téléphone sur le même Wi-Fi, ajoutez l'adresse IP
+# de l'ordinateur dans .env, par exemple : DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.20
+ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 
 
 # Application definition
@@ -133,3 +135,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Configuration du modèle utilisateur personnalisé
 
 AUTH_USER_MODEL = 'core.User'
+
+# Pages de connexion Frip'Lux (hors administration)
+LOGIN_URL = 'core:connexion'
+LOGIN_REDIRECT_URL = 'core:scanner'

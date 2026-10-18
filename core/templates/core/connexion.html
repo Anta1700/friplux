@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% block titre %}Connexion{% endblock %}
+{% block contenu %}
+<h1>Connexion</h1>
+<div class="carte">
+  {% if form.errors %}
+    <div class="message error">Identifiant ou mot de passe incorrect.</div>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <p>
+      <label for="id_username">Identifiant</label>
+      <input type="text" name="username" id="id_username" autocomplete="username" autocapitalize="none" required autofocus>
+    </p>
+    <p>
+      <label for="id_password">Mot de passe</label>
+      <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+    </p>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="bouton">Se connecter</button>
+  </form>
+</div>
+{% endblock %}

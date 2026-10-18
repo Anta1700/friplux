@@ -1,0 +1,78 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block titre %}Scanner une balle{% endblock %}
+{% block menu_scanner %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .viseur { position: relative; border-radius: var(--rayon); overflow: hidden; background: #111; aspect-ratio: 3 / 4; max-height: 62vh; margin: 0 auto 10px; }
+  .viseur video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .viseur .cadre {
+    position: absolute; inset: 18% 14%; border: 3px solid rgba(255,255,255,.9); border-radius: 18px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.35);
+  }
+  .viseur .etat { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #fff; font-weight: 600; text-shadow: 0 1px 3px #000; }
+  .cache { display: none !important; }
+  .ou { text-align: center; color: var(--doux); margin: 14px 0 6px; font-size: .9rem; }
+  .saisie { display: flex; gap: 8px; }
+  .saisie input { text-transform: uppercase; }
+  .saisie .bouton { width: auto; margin: 0; padding: 12px 16px; }
+  .derniers a { color: var(--marque); font-weight: 600; text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Scanner une balle</h1>
+
+<form method="post" id="form-scan">
+  {% csrf_token %}
+
+  <div class="carte">
+    <!-- 1. Caméra en direct (si le navigateur l'autorise : HTTPS ou localhost) -->
+    <div id="bloc-camera" class="cache">
+      <div class="viseur">
+        <video id="video" playsinline muted></video>
+        <div class="cadre"></div>
+        <div class="etat" id="etat-camera">Placez le QR code dans le cadre</div>
+      </div>
+      <button type="button" class="bouton secondaire cache" id="btn-relancer">Relancer la caméra</button>
+    </div>
+
+    <!-- 2. Photo du QR code (fonctionne partout, même sans HTTPS) -->
+    <p class="discret cache" id="info-photo">
+      La caméra en direct n'est pas disponible sur cette connexion. Prenez le QR code en photo :
+    </p>
+    <label class="bouton" id="btn-photo" for="photo">📷 Prendre le QR en photo</label>
+    <input type="file" id="photo" accept="image/*" capture="environment" class="cache">
+    <p class="discret cache" id="etat-photo"></p>
+
+    <!-- 3. Saisie manuelle -->
+    <div class="ou">ou saisir le code imprimé sous le QR</div>
+    <div class="saisie">
+      <input type="text" name="code" id="code" placeholder="FRPLX-LOT-2026-000123" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button type="submit" class="bouton">OK</button>
+    </div>
+  </div>
+</form>
+
+<canvas id="toile" class="cache"></canvas>
+
+{% if derniers %}
+<div class="carte derniers">
+  <h2>Mes derniers scans</h2>
+  <table>
+    {% for s in derniers %}
+      <tr>
+        <td><a href="{% url 'core:fiche_balle' s.lot.code_lot %}">{{ s.lot.code_lot }}</a><br><span class="discret">{{ s.categorie_lot|default:"" }}</span></td>
+        <td class="nombre discret">{{ s.date_scan|date:"d/m H:i" }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'core/js/jsQR.js' %}"></script>
+<script src="{% static 'core/js/scanner.js' %}"></script>
+{% endblock %}

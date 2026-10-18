@@ -1,0 +1,80 @@
+{% extends "core/base.html" %}
+{% block titre %}Statistiques des scans{% endblock %}
+{% block menu_stats %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .filtres { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .filtres > div { min-width: 0; }
+  .filtres input, .filtres select { max-width: 100%; min-width: 0; }
+  .filtres .large { grid-column: 1 / -1; }
+  .filtres .bouton { margin: 4px 0 0; }
+  .totaux { display: flex; gap: 10px; margin-bottom: 14px; }
+  .totaux div { flex: 1; background: var(--marque); color: #fff; border-radius: var(--rayon); padding: 14px; }
+  .totaux strong { display: block; font-size: 1.9rem; line-height: 1.1; }
+  .totaux span { font-size: .88rem; opacity: .85; }
+  tfoot td { font-weight: 700; border-bottom: 0; }
+  .historique td { font-size: .92rem; }
+  .historique a { color: var(--marque); font-weight: 600; text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Statistiques des scans</h1>
+
+<form method="get" class="carte">
+  <div class="filtres">
+    <div>{{ filtres.date_debut.label_tag }}{{ filtres.date_debut }}</div>
+    <div>{{ filtres.date_fin.label_tag }}{{ filtres.date_fin }}</div>
+    <div class="large">{{ filtres.conteneur.label_tag }}{{ filtres.conteneur }}</div>
+    <div>{{ filtres.depot.label_tag }}{{ filtres.depot }}</div>
+    <div>{{ filtres.utilisateur.label_tag }}{{ filtres.utilisateur }}</div>
+    <div class="large"><button type="submit" class="bouton">Filtrer</button></div>
+  </div>
+</form>
+
+<div class="totaux">
+  <div><strong>{{ totaux.scans }}</strong><span>scans au total</span></div>
+  <div><strong>{{ totaux.balles }}</strong><span>balles différentes</span></div>
+</div>
+
+<div class="carte">
+  <h2>Par catégorie</h2>
+  <table>
+    <thead><tr><th>Catégorie</th><th class="nombre">Scans</th><th class="nombre">Balles différentes</th></tr></thead>
+    <tbody>
+      {% for ligne in tableau %}
+        <tr><td>{{ ligne.categorie }}</td><td class="nombre">{{ ligne.scans }}</td><td class="nombre">{{ ligne.balles }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td class="nombre">{{ totaux.scans }}</td><td class="nombre">{{ totaux.balles }}</td></tr></tfoot>
+  </table>
+  <p class="discret" style="margin-bottom:0">
+    Rescanner une balle augmente le nombre de scans, pas le nombre de balles différentes.
+    {% if inconnus %}<br>{{ inconnus }} lecture{{ inconnus|pluralize }} de code inconnu (non comptée{{ inconnus|pluralize }} ci-dessus).{% endif %}
+  </p>
+</div>
+
+<div class="carte historique">
+  <h2>Derniers scans</h2>
+  {% if historique %}
+  <table>
+    <thead><tr><th>Quand</th><th>Balle</th><th>Par</th></tr></thead>
+    <tbody>
+      {% for s in historique %}
+        <tr>
+          <td class="discret">{{ s.date_scan|date:"d/m H:i" }}</td>
+          <td>
+            {% if s.lot %}<a href="{% url 'core:fiche_balle' s.lot.code_lot %}">{{ s.lot.code_lot }}</a><br><span class="discret">{{ s.categorie_lot|default:"" }}</span>{% else %}{{ s.code_scanne }}{% endif %}
+            {% if s.resultat == "QR_REMPLACE" %}<br><span class="pastille attente">ancienne étiquette</span>{% elif s.resultat == "INCONNU" %}<br><span class="pastille erreur">inconnu</span>{% endif %}
+          </td>
+          <td class="discret">{{ s.utilisateur|default:"—" }}{% if s.depot %}<br>{{ s.depot }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="discret" style="margin:0">Aucun scan pour ces critères.</p>
+  {% endif %}
+</div>
+{% endblock %}

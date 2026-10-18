@@ -1,0 +1,103 @@
+{% load static %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f3b37">
+  <title>{% block titre %}Frip'Lux{% endblock %} · Frip'Lux</title>
+  <style>
+    :root {
+      --fond: #f4f1ea;
+      --carte: #ffffff;
+      --encre: #1d2321;
+      --doux: #5d6662;
+      --ligne: #e2ddd2;
+      --marque: #1f3b37;
+      --marque-clair: #2f5a53;
+      --accent: #c8862a;
+      --ok: #2e7d4f;
+      --ok-fond: #e3f2e8;
+      --alerte: #9a5b00;
+      --alerte-fond: #fff3dc;
+      --erreur: #a12a2a;
+      --erreur-fond: #fbe5e5;
+      --rayon: 14px;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; background: var(--fond); color: var(--encre);
+      font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    header.bandeau {
+      background: var(--marque); color: #fff; padding: 12px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      position: sticky; top: 0; z-index: 5;
+    }
+    header.bandeau .logo { font-weight: 700; font-size: 1.15rem; letter-spacing: .02em; color: #fff; text-decoration: none; }
+    header.bandeau .logo span { color: var(--accent); }
+    nav.menu { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+    nav.menu a, nav.menu button {
+      color: #e8efe9; text-decoration: none; font: inherit; font-size: .9rem;
+      padding: 6px 10px; border-radius: 8px; background: none; border: 0; cursor: pointer;
+    }
+    nav.menu a.actif, nav.menu a:hover, nav.menu button:hover { background: var(--marque-clair); color: #fff; }
+    main { max-width: 720px; margin: 0 auto; padding: 16px 16px 48px; }
+    h1 { font-size: 1.5rem; margin: 8px 0 16px; }
+    h2 { font-size: 1.05rem; margin: 0 0 10px; color: var(--marque); text-transform: uppercase; letter-spacing: .04em; }
+    .carte { background: var(--carte); border: 1px solid var(--ligne); border-radius: var(--rayon); padding: 16px; margin-bottom: 14px; }
+    .message { border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; font-weight: 500; }
+    .message.success { background: var(--ok-fond); color: var(--ok); }
+    .message.error { background: var(--erreur-fond); color: var(--erreur); }
+    .message.warning, .message.info { background: var(--alerte-fond); color: var(--alerte); }
+    .bouton {
+      display: block; width: 100%; text-align: center; text-decoration: none; cursor: pointer;
+      font: inherit; font-weight: 650; font-size: 1.05rem;
+      padding: 15px 18px; border-radius: 12px; border: 0;
+      background: var(--marque); color: #fff; margin: 8px 0;
+    }
+    .bouton:active { transform: translateY(1px); }
+    .bouton.secondaire { background: #fff; color: var(--marque); border: 2px solid var(--marque); }
+    .bouton.succes { background: var(--ok); }
+    .bouton[disabled] { opacity: .5; cursor: not-allowed; }
+    input[type=text], input[type=date], input[type=password], select {
+      width: 100%; max-width: 100%; font: inherit; padding: 12px; border: 1px solid #cfc8b9; border-radius: 10px; background: #fff;
+    }
+    label { font-weight: 600; font-size: .92rem; display: block; margin: 0 0 4px; }
+    .discret { color: var(--doux); font-size: .9rem; }
+    .pastille { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .85rem; font-weight: 600; }
+    .pastille.ok { background: var(--ok-fond); color: var(--ok); }
+    .pastille.attente { background: var(--alerte-fond); color: var(--alerte); }
+    .pastille.neutre { background: #ece8df; color: var(--doux); }
+    .pastille.erreur { background: var(--erreur-fond); color: var(--erreur); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--ligne); vertical-align: top; }
+    th { font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; color: var(--doux); }
+    td.nombre, th.nombre { text-align: right; font-variant-numeric: tabular-nums; }
+    @media (min-width: 640px) { main { padding-top: 24px; } }
+  </style>
+  {% block entete %}{% endblock %}
+</head>
+<body>
+  <header class="bandeau">
+    <a class="logo" href="{% url 'core:scanner' %}">Frip'<span>Lux</span></a>
+    {% if user.is_authenticated %}
+      <nav class="menu">
+        <a href="{% url 'core:scanner' %}" class="{% block menu_scanner %}{% endblock %}">Scanner</a>
+        <a href="{% url 'core:statistiques' %}" class="{% block menu_stats %}{% endblock %}">Statistiques</a>
+        {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
+        <form method="post" action="{% url 'core:deconnexion' %}" style="display:inline">
+          {% csrf_token %}<button type="submit">Quitter</button>
+        </form>
+      </nav>
+    {% endif %}
+  </header>
+  <main>
+    {% for message in messages %}
+      <div class="message {{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+    {% block contenu %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

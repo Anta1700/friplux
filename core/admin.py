@@ -35,6 +35,7 @@ from .models import (
     Ventes,
     Qualites,
     ReferencesFournisseurs,
+    ScansLots,
 )
 from .admin_import import vue_apercu, vue_import
 from .services import (
@@ -925,3 +926,26 @@ class ReferencesFournisseursAdmin(admin.ModelAdmin):
                 .order_by("parent__nom", "nom")
             )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+# ============================================================
+# HISTORIQUE DES SCANS (lecture seule : chaque ligne est une preuve)
+# ============================================================
+
+@admin.register(ScansLots)
+class ScansLotsAdmin(admin.ModelAdmin):
+    list_display = ("date_scan", "code_scanne", "resultat", "lot", "categorie_lot", "utilisateur", "depot")
+    list_filter = ("resultat", "categorie_lot", "depot", "utilisateur", ("date_scan", admin.DateFieldListFilter))
+    search_fields = ("code_scanne", "lot__code_lot")
+    list_select_related = ("lot", "categorie_lot", "utilisateur", "depot")
+    date_hierarchy = "date_scan"
+    list_per_page = 100
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
