@@ -100,37 +100,54 @@
     document.getElementById("info-photo").classList.remove("cache");
   }
 
-  /* ---------- 2. Photo du QR ---------- */
-  var champPhoto = document.getElementById("photo");
+  /* ---------- 2. Photo du QR (appareil photo ou image enregistrée) ---------- */
   var etatPhoto = document.getElementById("etat-photo");
 
-  champPhoto.addEventListener("change", function () {
-    var fichier = champPhoto.files && champPhoto.files[0];
+  function afficherEtat(texte, type) {
+    etatPhoto.textContent = texte;
+    etatPhoto.className = "message " + (type || "info");
+  }
+
+  function traiterPhoto(champ) {
+    var fichier = champ.files && champ.files[0];
     if (!fichier) return;
-    etatPhoto.classList.remove("cache");
-    etatPhoto.textContent = "Lecture de la photo…";
+    afficherEtat("Lecture de la photo…", "info");
     var url = URL.createObjectURL(fichier);
     var image = new Image();
     image.onload = function () {
-      // Plusieurs tailles : une photo nette mais lointaine se lit mieux en grand.
-      var code =
-        decoder(image, image.naturalWidth, image.naturalHeight, 1000, "attemptBoth") ||
-        decoder(image, image.naturalWidth, image.naturalHeight, 1600, "attemptBoth") ||
-        decoder(image, image.naturalWidth, image.naturalHeight, 600, "attemptBoth");
-      URL.revokeObjectURL(url);
-      if (code) {
-        etatPhoto.textContent = "QR lu : " + code;
-        envoyer(code);
-      } else {
-        etatPhoto.textContent =
-          "QR non reconnu sur la photo. Rapprochez-vous, évitez les reflets, ou saisissez le code imprimé.";
-        champPhoto.value = "";
-      }
+      // Laisse le navigateur afficher « Lecture… » avant le calcul.
+      setTimeout(function () {
+        var code = null;
+        try {
+          code = window.FripluxQR.lirePhoto(image, toile);
+        } catch (e) {
+          code = null;
+        }
+        URL.revokeObjectURL(url);
+        champ.value = "";
+        if (code) {
+          afficherEtat("QR lu : " + code, "success");
+          envoyer(code);
+        } else {
+          afficherEtat(
+            "QR non reconnu sur cette photo. Cadrez l'étiquette de plus près, bien à plat, sans reflet, " +
+              "ou saisissez le code imprimé sous le QR.",
+            "error"
+          );
+        }
+      }, 30);
     };
     image.onerror = function () {
-      etatPhoto.textContent = "Impossible d'ouvrir la photo.";
+      URL.revokeObjectURL(url);
+      champ.value = "";
+      afficherEtat("Format d'image non pris en charge. Reprenez la photo ou choisissez une image JPEG/PNG.", "error");
     };
     image.src = url;
+  }
+
+  ["photo", "photo-galerie"].forEach(function (id) {
+    var champ = document.getElementById(id);
+    champ.addEventListener("change", function () { traiterPhoto(champ); });
   });
 
   /* ---------- 3. Saisie manuelle ---------- */

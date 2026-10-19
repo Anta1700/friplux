@@ -13,6 +13,10 @@
   }
   .viseur .etat { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #fff; font-weight: 600; text-shadow: 0 1px 3px #000; }
   .cache { display: none !important; }
+  /* Champ fichier invisible mais « présent » : Safari (iPhone) n'ouvre pas toujours
+     un champ masqué par display:none quand on touche son libellé. */
+  .fichier-invisible { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); }
+  .lien-galerie { display: block; text-align: center; color: var(--marque); font-weight: 600; margin: 2px 0 6px; cursor: pointer; }
   .ou { text-align: center; color: var(--doux); margin: 14px 0 6px; font-size: .9rem; }
   .saisie { display: flex; gap: 8px; }
   .saisie input { text-transform: uppercase; }
@@ -43,8 +47,10 @@
       La caméra en direct n'est pas disponible sur cette connexion. Prenez le QR code en photo :
     </p>
     <label class="bouton" id="btn-photo" for="photo">📷 Prendre le QR en photo</label>
-    <input type="file" id="photo" accept="image/*" capture="environment" class="cache">
-    <p class="discret cache" id="etat-photo"></p>
+    <input type="file" id="photo" accept="image/*" capture="environment" class="fichier-invisible">
+    <label class="lien-galerie" for="photo-galerie">ou choisir une image déjà enregistrée</label>
+    <input type="file" id="photo-galerie" accept="image/*" class="fichier-invisible">
+    <p class="cache" id="etat-photo" role="status"></p>
 
     <!-- 3. Saisie manuelle -->
     <div class="ou">ou saisir le code imprimé sous le QR</div>
@@ -74,5 +80,6 @@
 
 {% block scripts %}
 <script src="{% static 'core/js/jsQR.js' %}"></script>
+<script src="{% static 'core/js/qr_photo.js' %}"></script>
 <script src="{% static 'core/js/scanner.js' %}"></script>
 {% endblock %}
