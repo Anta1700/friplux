@@ -10,8 +10,8 @@
   .filtres .large { grid-column: 1 / -1; }
   .filtres .bouton { margin: 4px 0 0; }
   .totaux { display: flex; gap: 10px; margin-bottom: 14px; }
-  .totaux div { flex: 1; background: var(--marque); color: #fff; border-radius: var(--rayon); padding: 14px; }
-  .totaux strong { display: block; font-size: 1.9rem; line-height: 1.1; }
+  .totaux div { flex: 1; min-width: 0; background: var(--marque); color: #fff; border-radius: var(--rayon); padding: 14px; }
+  .totaux strong { display: block; font-size: 1.7rem; line-height: 1.1; }
   .totaux span { font-size: .88rem; opacity: .85; }
   tfoot td { font-weight: 700; border-bottom: 0; }
   .historique td { font-size: .92rem; }
@@ -35,22 +35,24 @@
 
 <div class="totaux">
   <div><strong>{{ totaux.scans }}</strong><span>scans au total</span></div>
-  <div><strong>{{ totaux.balles }}</strong><span>balles différentes</span></div>
+  <div><strong>{{ totaux.lots }}</strong><span>lots différents</span></div>
+  <div><strong>{{ totaux.balles }}</strong><span>balles dans ces lots</span></div>
 </div>
 
 <div class="carte">
   <h2>Par catégorie</h2>
   <table>
-    <thead><tr><th>Catégorie</th><th class="nombre">Scans</th><th class="nombre">Balles différentes</th></tr></thead>
+    <thead><tr><th>Catégorie</th><th class="nombre">Scans</th><th class="nombre">Lots</th><th class="nombre">Balles</th></tr></thead>
     <tbody>
       {% for ligne in tableau %}
-        <tr><td>{{ ligne.categorie }}</td><td class="nombre">{{ ligne.scans }}</td><td class="nombre">{{ ligne.balles }}</td></tr>
+        <tr><td>{{ ligne.categorie }}</td><td class="nombre">{{ ligne.scans }}</td><td class="nombre">{{ ligne.lots }}</td><td class="nombre">{{ ligne.balles }}</td></tr>
       {% endfor %}
     </tbody>
-    <tfoot><tr><td>Total</td><td class="nombre">{{ totaux.scans }}</td><td class="nombre">{{ totaux.balles }}</td></tr></tfoot>
+    <tfoot><tr><td>Total</td><td class="nombre">{{ totaux.scans }}</td><td class="nombre">{{ totaux.lots }}</td><td class="nombre">{{ totaux.balles }}</td></tr></tfoot>
   </table>
   <p class="discret" style="margin-bottom:0">
-    Rescanner une balle augmente le nombre de scans, pas le nombre de balles différentes.
+    Scans : chaque lecture d'étiquette. Lots : lots différents scannés (rescanner un lot ne le compte qu'une fois).
+    Balles : nombre de balles contenues dans ces lots.
     {% if inconnus %}<br>{{ inconnus }} lecture{{ inconnus|pluralize }} de code inconnu (non comptée{{ inconnus|pluralize }} ci-dessus).{% endif %}
   </p>
 </div>
@@ -59,7 +61,7 @@
   <h2>Derniers scans</h2>
   {% if historique %}
   <table>
-    <thead><tr><th>Quand</th><th>Balle</th><th>Par</th></tr></thead>
+    <thead><tr><th>Quand</th><th>Lot</th><th>Par</th></tr></thead>
     <tbody>
       {% for s in historique %}
         <tr>

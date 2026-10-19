@@ -606,15 +606,30 @@ class Lots(models.Model):
         related_name="lots",
     )
 
+    # Un lot = une ligne de la fiche fournisseur ; il peut regrouper plusieurs balles
+    # qui partagent le même code et le même QR code.
+    nombre_balles = models.PositiveIntegerField(
+        "nombre de balles",
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text="Balles annoncées par le fournisseur pour ce lot.",
+    )
+    nombre_balles_recues = models.PositiveIntegerField(
+        "balles reçues",
+        blank=True,
+        null=True,
+        help_text="Balles comptées à la réception (vide tant que le lot n'est pas reçu).",
+    )
+
     poids_kg = models.DecimalField(
-        "poids (kg)",
+        "poids total (kg)",
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.01"))],
     )
 
     prix_achat = models.DecimalField(
-        "prix d'achat",
+        "prix d'achat total",
         max_digits=15,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0"))],
@@ -657,8 +672,8 @@ class Lots(models.Model):
     class Meta:
         managed = False
         db_table = 'lots'
-        verbose_name = "lot (balle)"
-        verbose_name_plural = "lots (balles)"
+        verbose_name = "lot"
+        verbose_name_plural = "lots"
 
     def __str__(self):
         return self.code_lot or f"Lot #{self.pk}"
@@ -679,12 +694,26 @@ class Lots(models.Model):
             erreurs["date_reception"] = "La date de réception ne peut pas être antérieure à la date de création."
 
         if self.statut_ouverture == StatutOuverture.OUVERT and not self.date_ouverture:
-            erreurs["date_ouverture"] = "Une balle ouverte doit avoir une date d'ouverture."
+            erreurs["date_ouverture"] = "Un lot ouvert doit avoir une date d'ouverture."
         if self.statut_ouverture == StatutOuverture.NON_OUVERT and self.date_ouverture:
-            erreurs["date_ouverture"] = "Une balle non ouverte ne doit pas avoir de date d'ouverture."
+            erreurs["date_ouverture"] = "Un lot non ouvert ne doit pas avoir de date d'ouverture."
 
         if erreurs:
             raise ValidationError(erreurs)
+
+    @property
+    def poids_moyen_balle(self):
+        """Poids moyen d'une balle du lot (information, pas une mesure)."""
+        if self.poids_kg and self.nombre_balles:
+            return (self.poids_kg / self.nombre_balles).quantize(Decimal("0.01"))
+        return None
+
+    @property
+    def balles_manquantes(self):
+        """Écart à la réception (None tant que le lot n'est pas compté)."""
+        if self.nombre_balles_recues is None:
+            return None
+        return self.nombre_balles - self.nombre_balles_recues
 
     @property
     def qr_actif(self):

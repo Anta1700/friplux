@@ -15,6 +15,7 @@ Règles appliquées :
 
 import io
 import re
+from decimal import Decimal
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
@@ -136,7 +137,7 @@ def creer_lots_en_serie(lots):
     """
     Enregistre une liste de lots (non sauvegardés, sans code) avec des codes
     consécutifs et un QR code chacun, en une seule transaction.
-    Utilisé par l'import des fiches fournisseurs (plusieurs centaines de balles).
+    Utilisé par l'import des fiches fournisseurs.
     """
     for lot in lots:
         if lot.code_lot:
@@ -255,6 +256,10 @@ def image_etiquette(qr_code):
         # Indispensable pour que le fournisseur colle la bonne étiquette sur la bonne balle.
         textes.append((str(lot.reference_fournisseur), 26))
     textes.append((classement, 24))
+    if lot.nombre_balles > 1:
+        # Le même QR est collé sur toutes les balles du lot.
+        poids = format(Decimal(lot.poids_kg).normalize(), "f").replace(".", ",")
+        textes.append((f"Lot de {lot.nombre_balles} balles · {poids} kg · à coller sur chaque balle", 22))
     textes.append((f"Conteneur {lot.conteneur}", 22))
     if qr_code.version > 1:
         textes.append((f"Étiquette version {qr_code.version}", 20))
@@ -284,14 +289,20 @@ def png_qr(qr_code):
     return tampon.getvalue()
 
 
-def pdf_etiquettes(qr_codes):
-    """PDF avec une étiquette par page, à envoyer au fournisseur ou à imprimer."""
-    # Noir et blanc pur (seuil net, sans tramage) : ~3 Ko par étiquette au lieu de ~36 Ko,
-    # soit environ 2 Mo pour un conteneur de 570 balles, envoyable par e-mail.
-    images = [
-        image_etiquette(qr).convert("L").point(lambda p: 255 if p > 160 else 0, mode="1")
-        for qr in qr_codes
-    ]
+def pdf_etiquettes(qr_codes, une_par_balle=False):
+    """
+    PDF des étiquettes, une par page.
+    - par défaut : une étiquette par lot (à reproduire pour chaque balle du lot) ;
+    - une_par_balle=True : l'étiquette du lot est répétée autant de fois que le lot a de balles,
+      pour imprimer directement toutes les étiquettes à coller.
+    """
+    # Noir et blanc pur (seuil net, sans tramage) : ~3 Ko par étiquette, PDF léger
+    # et facile à envoyer par e-mail.
+    images = []
+    for qr in qr_codes:
+        image = image_etiquette(qr).convert("L").point(lambda p: 255 if p > 160 else 0, mode="1")
+        copies = qr.lot.nombre_balles if une_par_balle else 1
+        images.extend([image] * copies)
     if not images:
         raise ValueError("Aucun QR code à imprimer.")
     tampon = io.BytesIO()
@@ -306,7 +317,7 @@ def pdf_etiquettes(qr_codes):
 @transaction.atomic
 def importer_fiche(conteneur, date_fiche, lignes, classements):
     """
-    Crée les balles d'une fiche fournisseur.
+    Crée les lots d'une fiche fournisseur : un lot (un code, un QR) par ligne.
 
     - lignes : LigneFiche (voir import_fiche.py)
     - classements : pour chaque ligne, dict {categorie_lot, categorie_produit, qualite}
@@ -327,20 +338,26 @@ def importer_fiche(conteneur, date_fiche, lignes, classements):
             code=ligne.code,
             defaults={"libelle": ligne.libelle[:200], **classement},
         )
-        note = f"Fiche fournisseur du {date_fiche or '?'}, article {ligne.code}. Prix d'achat calculé en EUR ({ligne.prix_kg} €/kg)."
-        for poids in ligne.poids_par_balle():
-            lots.append(
-                Lots(
-                    conteneur=conteneur,
-                    reference_fournisseur=reference,
-                    categorie_lot=classement["categorie_lot"],
-                    categorie_produit=classement["categorie_produit"],
-                    qualite=classement["qualite"],
-                    poids_kg=poids,
-                    prix_achat=prix_balle(poids, ligne.prix_kg),
-                    date_creation=aujourd_hui,
-                    notes=note,
-                )
+        poids_total = Decimal(ligne.poids_total)
+        # Un lot par ligne de la fiche : toutes les balles de la ligne partagent
+        # le même code et le même QR code (ex. 9 balles « déstockage été »).
+        lots.append(
+            Lots(
+                conteneur=conteneur,
+                reference_fournisseur=reference,
+                categorie_lot=classement["categorie_lot"],
+                categorie_produit=classement["categorie_produit"],
+                qualite=classement["qualite"],
+                nombre_balles=ligne.nombre_balles,
+                poids_kg=poids_total,
+                prix_achat=prix_balle(poids_total, ligne.prix_kg),
+                date_creation=aujourd_hui,
+                notes=(
+                    f"Fiche fournisseur du {date_fiche or '?'}, article {ligne.code} : "
+                    f"{ligne.nombre_balles} balle(s), {ligne.poids_total} kg. "
+                    f"Prix d'achat calculé en EUR ({ligne.prix_kg} €/kg)."
+                ),
             )
+        )
 
     return creer_lots_en_serie(lots)

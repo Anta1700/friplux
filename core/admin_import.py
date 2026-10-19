@@ -4,7 +4,7 @@
 Étape 1 : choisir le conteneur et déposer la fiche.
 Étape 2 : aperçu ligne par ligne, avec le classement (catégorie, sous-catégorie, qualité)
           reconnu dans le catalogue ou proposé automatiquement, modifiable.
-Étape 3 : création des balles, des QR codes, et mémorisation du classement.
+Étape 3 : création des lots (un par ligne de la fiche, avec son QR code) et mémorisation du classement.
 """
 from django import forms
 from django.contrib import messages
@@ -153,7 +153,8 @@ def vue_apercu(modeladmin, request):
     deja = conteneur.lots.count()
     if deja:
         avertissements.append(
-            f"Ce conteneur contient déjà {deja} balle(s). Importer à nouveau la même fiche créerait des doublons."
+            f"Ce conteneur contient déjà {deja} lot(s). Importer à nouveau la même fiche créerait des doublons. "
+            "Pour repartir de zéro, utilisez la commande « reinitialiser_conteneur »."
         )
 
     initial, statuts = _classement_initial(lignes, conteneur.fournisseur)
@@ -179,9 +180,10 @@ def vue_apercu(modeladmin, request):
             messages.success(
                 request,
                 format_html(
-                    "{} balles créées pour le conteneur {}, chacune avec son QR code. "
-                    '<a href="{}"><strong>Télécharger les étiquettes (PDF)</strong></a>',
-                    len(lots), conteneur.numero_conteneur, url_pdf,
+                    "{} lots créés pour le conteneur {} ({} balles), chacun avec son QR code. "
+                    'Étiquettes : <a href="{}"><strong>une par lot (PDF)</strong></a> · '
+                    '<a href="{}?copies=balles"><strong>une par balle, prêtes à coller (PDF)</strong></a>',
+                    len(lots), conteneur.numero_conteneur, sum(l.nombre_balles for l in lots), url_pdf, url_pdf,
                 ),
             )
             url = reverse("admin:core_lots_changelist") + f"?conteneur__id__exact={conteneur.pk}"
@@ -193,13 +195,7 @@ def vue_apercu(modeladmin, request):
 
     rangees = []
     for ligne, form, statut in zip(lignes, formset.forms, statuts):
-        poids = ligne.poids_par_balle()
-        rangees.append({
-            "ligne": ligne,
-            "form": form,
-            "statut": statut,
-            "poids_balle": poids[0] if len(set(poids)) == 1 else f"{min(poids)}–{max(poids)}",
-        })
+        rangees.append({"ligne": ligne, "form": form, "statut": statut})
 
     total_statuts = {s: statuts.count(s) for s in ("connue", "proposee", "a_classer")}
     return render(
@@ -213,6 +209,7 @@ def vue_apercu(modeladmin, request):
             conteneur=conteneur,
             formset=formset,
             rangees=rangees,
+            nombre_lots=len(lignes),
             nombre_balles=sum(l.nombre_balles for l in lignes),
             poids_total=sum(float(l.poids_total) for l in lignes),
             alertes_bloquantes=alertes_bloquantes,

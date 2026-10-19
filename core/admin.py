@@ -381,6 +381,7 @@ class LotsAdmin(admin.ModelAdmin):
         "sous_categorie",
         "qualite",
         "reference_code",
+        "nombre_balles",
         "poids_kg",
         "statut_logistique",
         "statut_ouverture",
@@ -416,14 +417,14 @@ class LotsAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Identification", {"fields": ("code_lot", "conteneur", "reference_fournisseur")}),
         ("Classement", {"fields": ("categorie_lot", "categorie_produit", "qualite")}),
-        ("Informations fournisseur", {"fields": ("poids_kg", "prix_achat", "date_creation")}),
-        ("Suivi", {"fields": ("statut_logistique", "date_reception", "statut_ouverture", "date_ouverture", "notes")}),
+        ("Informations fournisseur", {"fields": ("nombre_balles", "poids_kg", "prix_achat", "date_creation")}),
+        ("Suivi", {"fields": ("statut_logistique", "date_reception", "nombre_balles_recues", "statut_ouverture", "date_ouverture", "notes")}),
         ("QR code", {"fields": ("etiquette_qr",)}),
         ("Dates techniques", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
 
     inlines = (QrCodesInline,)
-    actions = ("imprimer_etiquettes", "marquer_qr_envoyes", "regenerer_qr")
+    actions = ("imprimer_etiquettes", "imprimer_etiquettes_par_balle", "marquer_qr_envoyes", "regenerer_qr")
 
     @admin.display(description="Étiquette QR")
     def etiquette_qr(self, obj):
@@ -476,8 +477,7 @@ class LotsAdmin(admin.ModelAdmin):
         else:
             super().save_model(request, obj, form, change)
 
-    @admin.action(description="Imprimer les étiquettes QR (PDF)")
-    def imprimer_etiquettes(self, request, queryset):
+    def _pdf_etiquettes(self, request, queryset, une_par_balle):
         qr_codes = list(
             QrCodes.objects.filter(lot__in=queryset, actif=True)
             .select_related(*RELATIONS_ETIQUETTE)
@@ -486,21 +486,31 @@ class LotsAdmin(admin.ModelAdmin):
         if not qr_codes:
             self.message_user(request, "Aucun QR code actif dans la sélection.", messages.WARNING)
             return None
-        reponse = HttpResponse(pdf_etiquettes(qr_codes), content_type="application/pdf")
-        reponse["Content-Disposition"] = 'attachment; filename="etiquettes_qr_friplux.pdf"'
+        reponse = HttpResponse(pdf_etiquettes(qr_codes, une_par_balle=une_par_balle), content_type="application/pdf")
+        nom = "etiquettes_qr_friplux_une_par_balle.pdf" if une_par_balle else "etiquettes_qr_friplux.pdf"
+        reponse["Content-Disposition"] = f'attachment; filename="{nom}"'
         return reponse
+
+    @admin.action(description="Imprimer les étiquettes QR : une par lot (PDF)")
+    def imprimer_etiquettes(self, request, queryset):
+        return self._pdf_etiquettes(request, queryset, une_par_balle=False)
+
+    @admin.action(description="Imprimer les étiquettes QR : une par balle, prêtes à coller (PDF)")
+    def imprimer_etiquettes_par_balle(self, request, queryset):
+        return self._pdf_etiquettes(request, queryset, une_par_balle=True)
 
     @admin.action(description="Marquer les QR comme envoyés au fournisseur")
     def marquer_qr_envoyes(self, request, queryset):
         nombre = marquer_envoyes_au_fournisseur(QrCodes.objects.filter(lot__in=queryset, actif=True))
         self.message_user(request, f"{nombre} QR code(s) marqué(s) comme envoyé(s).", messages.SUCCESS)
 
-    @admin.action(description="Remplacer le QR code (étiquette perdue ou abîmée)")
+    @admin.action(description="Remplacer le QR code du lot (étiquettes perdues ou abîmées)")
     def regenerer_qr(self, request, queryset):
         nouveaux = [regenerer_qr_code(lot).code for lot in queryset]
         self.message_user(
             request,
-            "Nouveaux QR codes : " + ", ".join(nouveaux) + ". Les anciennes étiquettes ne sont plus valables.",
+            "Nouveaux QR codes : " + ", ".join(nouveaux)
+            + ". Les anciennes étiquettes ne sont plus valables : remplacez-les sur toutes les balles du lot.",
             messages.WARNING,
         )
 

@@ -14,6 +14,11 @@
   .compteur { display: flex; gap: 10px; }
   .compteur div { flex: 1; background: var(--fond); border-radius: 10px; padding: 10px; text-align: center; }
   .compteur strong { display: block; font-size: 1.5rem; }
+  .nb-balles { display: inline-block; margin-left: 6px; padding: 4px 12px; border-radius: 999px; background: #e3ece9; color: var(--marque); font-weight: 700; }
+  .reception { background: var(--carte); border: 2px solid var(--ok); border-radius: var(--rayon); padding: 14px 16px; margin-bottom: 14px; }
+  .reception .ligne { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+  .reception input[type=number] { width: 90px; font: inherit; font-size: 1.2rem; font-weight: 700; padding: 10px; border: 1px solid #cfc8b9; border-radius: 10px; text-align: center; }
+  .ecart { color: var(--erreur); font-weight: 700; }
 </style>
 {% endblock %}
 
@@ -22,19 +27,19 @@
 {% if scan and scan.resultat == "QR_REMPLACE" %}
   <div class="message error">
     ⚠ Cette étiquette (version {{ scan.qr_code.version }}) a été remplacée{% if qr_actif %} par la version {{ qr_actif.version }}{% endif %}.
-    Retirez-la de la balle et utilisez la nouvelle étiquette.
+    Retirez-la des balles du lot et utilisez la nouvelle étiquette.
   </div>
 {% elif scan %}
-  <div class="message success">✓ Balle identifiée{% if resume.nombre == 1 %} : premier scan de cette balle{% endif %}.</div>
+  <div class="message success">✓ Lot identifié{% if resume.nombre == 1 %} : premier scan de ce lot{% endif %}.</div>
 {% endif %}
 
 <div class="carte">
   <div class="entete-balle">
     <div class="code">{{ lot.code_lot }}</div>
     {% if lot.statut_logistique == StatutLogistique.RECU %}
-      <span class="pastille ok">Reçue</span>
+      <span class="pastille ok">Reçu</span>
     {% elif lot.statut_logistique == StatutLogistique.ANNULE %}
-      <span class="pastille erreur">Annulée</span>
+      <span class="pastille erreur">Annulé</span>
     {% else %}
       <span class="pastille attente">{{ lot.get_statut_logistique_display }}</span>
     {% endif %}
@@ -43,16 +48,22 @@
     {{ lot.categorie_lot }}{% if lot.categorie_produit %} › {{ lot.categorie_produit.nom }}{% endif %}
   </div>
   {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% else %}<span class="vide">Qualité non renseignée</span>{% endif %}
+  <span class="nb-balles">{{ lot.nombre_balles }} balle{{ lot.nombre_balles|pluralize }}</span>
   <p class="discret" style="margin-bottom:0">
-    {% if lot.statut_ouverture == "OUVERT" %}Balle ouverte le {{ lot.date_ouverture|date:"d/m/Y" }}{% else %}Balle non ouverte{% endif %}
+    {% if lot.statut_ouverture == "OUVERT" %}Lot ouvert le {{ lot.date_ouverture|date:"d/m/Y" }}{% else %}Lot non ouvert{% endif %}
   </p>
 </div>
 
 {% if peut_recevoir %}
-  <form method="post">
+  <form method="post" class="reception">
     {% csrf_token %}
     <input type="hidden" name="action" value="recu">
-    <button type="submit" class="bouton succes">✓ Marquer comme reçue</button>
+    <label for="nombre_recu">Balles reçues pour ce lot</label>
+    <div class="ligne">
+      <input type="number" id="nombre_recu" name="nombre_recu" value="{{ lot.nombre_balles }}" min="0" max="{{ lot.nombre_balles }}" inputmode="numeric" required>
+      <span>sur {{ lot.nombre_balles }} annoncée{{ lot.nombre_balles|pluralize }}</span>
+    </div>
+    <button type="submit" class="bouton succes">✓ Marquer comme reçu</button>
   </form>
 {% endif %}
 
@@ -61,10 +72,12 @@
   <dl>
     <dt>Référence</dt>
     <dd>{% if lot.reference_fournisseur %}{{ lot.reference_fournisseur }}{% else %}<span class="vide">Non renseignée</span>{% endif %}</dd>
-    <dt>Poids</dt>
-    <dd>{{ lot.poids_kg }} kg</dd>
+    <dt>Balles</dt>
+    <dd>{{ lot.nombre_balles }}</dd>
+    <dt>Poids total</dt>
+    <dd>{{ lot.poids_kg }} kg{% if lot.nombre_balles > 1 %}<br><span class="discret">environ {{ lot.poids_moyen_balle }} kg par balle</span>{% endif %}</dd>
     {% if voir_prix %}
-      <dt>Prix d'achat</dt>
+      <dt>Prix d'achat total</dt>
       <dd>{{ lot.prix_achat }}</dd>
     {% endif %}
     <dt>Fournisseur</dt>
@@ -88,8 +101,15 @@
       {% if lot.date_reception %}
         {{ lot.date_reception|date:"d/m/Y" }}
         {% if reception and reception.utilisateur %}<br><span class="discret">par {{ reception.utilisateur.get_full_name|default:reception.utilisateur }}</span>{% endif %}
-      {% else %}<span class="vide">Pas encore reçue</span>{% endif %}
+      {% else %}<span class="vide">Pas encore reçu</span>{% endif %}
     </dd>
+    {% if lot.nombre_balles_recues is not None %}
+      <dt>Balles reçues</dt>
+      <dd>
+        {{ lot.nombre_balles_recues }} sur {{ lot.nombre_balles }}
+        {% if lot.balles_manquantes %}<br><span class="ecart">{{ lot.balles_manquantes }} manquante{{ lot.balles_manquantes|pluralize }}</span>{% endif %}
+      </dd>
+    {% endif %}
     <dt>Étiquette</dt>
     <dd>
       {% if qr_actif %}Version {{ qr_actif.version }}
@@ -112,7 +132,7 @@
 </div>
 {% endif %}
 
-<a class="bouton" href="{% url 'core:scanner' %}">Scanner une autre balle</a>
+<a class="bouton" href="{% url 'core:scanner' %}">Scanner un autre lot</a>
 {% if user.is_staff %}
   <a class="bouton secondaire" href="{% url 'admin:core_lots_change' lot.pk %}">Ouvrir dans l'administration</a>
 {% endif %}

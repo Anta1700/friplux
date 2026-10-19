@@ -64,8 +64,15 @@ def fiche_balle(request, code_lot):
 
     if request.method == "POST" and request.POST.get("action") == "recu":
         try:
-            marquer_recu(lot, request.user, _adresse_ip(request))
-            messages.success(request, f"Balle {lot.code_lot} marquée comme reçue aujourd'hui.")
+            lot = marquer_recu(lot, request.user, _adresse_ip(request), request.POST.get("nombre_recu"))
+            if lot.balles_manquantes:
+                messages.warning(
+                    request,
+                    f"Lot {lot.code_lot} reçu avec {lot.nombre_balles_recues} balle(s) sur {lot.nombre_balles} : "
+                    f"{lot.balles_manquantes} manquante(s), écart enregistré.",
+                )
+            else:
+                messages.success(request, f"Lot {lot.code_lot} reçu aujourd'hui : {lot.nombre_balles_recues} balle(s).")
         except ErreurReception as erreur:
             messages.error(request, str(erreur))
         return redirect("core:fiche_balle", code_lot=lot.code_lot)
@@ -107,7 +114,12 @@ def statistiques(request):
     # Afficher toutes les catégories, même sans scan (0), dans un ordre stable.
     par_nom = {l["categorie_lot__nom"]: l for l in lignes}
     tableau = [
-        {"categorie": c.nom, "scans": par_nom.get(c.nom, {}).get("scans", 0), "balles": par_nom.get(c.nom, {}).get("balles", 0)}
+        {
+            "categorie": c.nom,
+            "scans": par_nom.get(c.nom, {}).get("scans", 0),
+            "lots": par_nom.get(c.nom, {}).get("lots", 0),
+            "balles": par_nom.get(c.nom, {}).get("balles", 0),
+        }
         for c in CategoriesLots.objects.filter(actif=True).order_by("nom")
     ]
 

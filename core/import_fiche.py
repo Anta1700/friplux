@@ -8,8 +8,8 @@ Format attendu (fiche SILTEX) :
 - une ligne par article : code, libellé, nombre de balles, kg total, prix au kg ;
 - la lecture s'arrête à « TOTAL ».
 
-Une ligne d'article donne N balles : le poids total est réparti entre elles
-(au centime près, sans perte) et le prix de chaque balle = son poids × prix au kg.
+Une ligne d'article donne UN lot (un code, un QR code) regroupant ses N balles :
+poids du lot = kg de la ligne, prix du lot = kg × prix au kg.
 """
 import re
 import unicodedata
@@ -48,8 +48,11 @@ class LigneFiche:
     prix_kg: str
     alertes: list = field(default_factory=list)
 
-    def poids_par_balle(self):
-        return repartir_poids(Decimal(self.poids_total), self.nombre_balles)
+    def poids_moyen_balle(self):
+        return (Decimal(self.poids_total) / self.nombre_balles).quantize(CENTIME, ROUND_HALF_UP)
+
+    def prix_total(self):
+        return prix_balle(Decimal(self.poids_total), self.prix_kg)
 
     def to_dict(self):
         return asdict(self)
@@ -78,16 +81,6 @@ def _decimal(valeur):
         return Decimal(str(valeur).replace(",", ".").strip())
     except InvalidOperation:
         return None
-
-
-def repartir_poids(poids_total, nombre):
-    """
-    Répartit un poids entre `nombre` balles au centime près, sans perte :
-    225 kg / 9 -> 9 × 25,00 ; 100 kg / 3 -> 33,34 + 33,33 + 33,33.
-    """
-    centimes = int((poids_total / CENTIME).to_integral_value(ROUND_HALF_UP))
-    base, reste = divmod(centimes, nombre)
-    return [Decimal(base + (1 if i < reste else 0)) * CENTIME for i in range(nombre)]
 
 
 def prix_balle(poids, prix_kg):

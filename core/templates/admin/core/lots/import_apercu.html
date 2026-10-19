@@ -38,7 +38,8 @@
     <div>Conteneur choisi<strong>{{ conteneur.numero_conteneur }}</strong></div>
     <div>Fournisseur<strong>{{ conteneur.fournisseur }}</strong></div>
     <div>Date de la fiche<strong>{{ donnees.date|default:"—" }}</strong></div>
-    <div>Balles à créer<strong>{{ nombre_balles }}</strong></div>
+    <div>Lots à créer (QR codes)<strong>{{ nombre_lots }}</strong></div>
+    <div>Balles<strong>{{ nombre_balles }}</strong></div>
     <div>Poids total<strong>{{ poids_total|floatformat:0 }} kg</strong></div>
   </div>
 
@@ -65,7 +66,7 @@
       <table class="fiche">
         <thead>
           <tr>
-            <th>Code</th><th>Article</th><th class="nombre">Balles</th><th class="nombre">Kg / balle</th>
+            <th>Code</th><th>Article</th><th class="nombre">Balles</th><th class="nombre">Kg total</th>
             <th class="nombre">€ / kg</th><th>Catégorie</th><th>Sous-catégorie</th><th>Qualité</th><th>État</th>
           </tr>
         </thead>
@@ -78,7 +79,7 @@
               <td>{{ r.ligne.code }}</td>
               <td>{{ r.ligne.libelle }}</td>
               <td class="nombre">{{ r.ligne.nombre_balles }}</td>
-              <td class="nombre">{{ r.poids_balle }}</td>
+              <td class="nombre">{{ r.ligne.poids_total }}</td>
               <td class="nombre">{{ r.ligne.prix_kg }}</td>
               <td>{{ r.form.categorie_lot.errors }}{{ r.form.categorie_lot }}</td>
               <td>{{ r.form.categorie_produit.errors }}{{ r.form.categorie_produit }}</td>
@@ -104,7 +105,7 @@
     {% endif %}
 
     <div class="submit-row">
-      <input type="submit" class="default" value="Créer les {{ nombre_balles }} balles et leurs QR codes" {% if alertes_bloquantes %}disabled{% endif %}>
+      <input type="submit" class="default" value="Créer les {{ nombre_lots }} lots ({{ nombre_balles }} balles) et leurs QR codes" {% if alertes_bloquantes %}disabled{% endif %}>
       <input type="submit" name="annuler" value="Annuler" formnovalidate>
     </div>
   </form>

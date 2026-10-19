@@ -67,23 +67,41 @@ def enregistrer_scan(code, utilisateur):
 
 
 @transaction.atomic
-def marquer_recu(lot, utilisateur, adresse_ip=None):
-    """Passe la balle au statut Reçu avec la date du jour, et trace l'opération."""
+def marquer_recu(lot, utilisateur, adresse_ip=None, nombre_recu=None):
+    """
+    Passe le lot au statut Reçu avec la date du jour, enregistre le nombre de balles
+    comptées (par défaut : toutes les balles annoncées) et trace l'opération.
+    """
     lot = Lots.objects.select_for_update().get(pk=lot.pk)
 
     if lot.statut_logistique == StatutLogistique.RECU:
-        raise ErreurReception(f"Cette balle est déjà reçue (le {lot.date_reception:%d/%m/%Y}).")
+        raise ErreurReception(f"Ce lot est déjà reçu (le {lot.date_reception:%d/%m/%Y}).")
     if lot.statut_logistique not in STATUTS_RECEVABLES:
-        raise ErreurReception(f"Impossible : la balle est au statut « {lot.get_statut_logistique_display()} ».")
+        raise ErreurReception(f"Impossible : le lot est au statut « {lot.get_statut_logistique_display()} ».")
+
+    if nombre_recu is None:
+        nombre_recu = lot.nombre_balles
+    try:
+        nombre_recu = int(nombre_recu)
+    except (TypeError, ValueError):
+        raise ErreurReception("Nombre de balles reçues invalide.")
+    if nombre_recu < 0:
+        raise ErreurReception("Le nombre de balles reçues ne peut pas être négatif.")
+    if nombre_recu > lot.nombre_balles:
+        raise ErreurReception(
+            f"Ce lot annonce {lot.nombre_balles} balle(s) : vous ne pouvez pas en recevoir {nombre_recu}. "
+            "S'il y a des balles en trop, signalez-le au responsable."
+        )
 
     aujourd_hui = timezone.localdate()
     if lot.date_creation and aujourd_hui < lot.date_creation:
-        raise ErreurReception("La date de réception ne peut pas précéder la date de création de la balle.")
+        raise ErreurReception("La date de réception ne peut pas précéder la date de création du lot.")
 
-    avant = {"statut_logistique": lot.statut_logistique, "date_reception": None}
+    avant = {"statut_logistique": lot.statut_logistique, "date_reception": None, "nombre_balles_recues": None}
     lot.statut_logistique = StatutLogistique.RECU
     lot.date_reception = aujourd_hui
-    lot.save(update_fields=["statut_logistique", "date_reception", "updated_at"])
+    lot.nombre_balles_recues = nombre_recu
+    lot.save(update_fields=["statut_logistique", "date_reception", "nombre_balles_recues", "updated_at"])
 
     AuditLogs.objects.create(
         utilisateur=utilisateur,
@@ -95,6 +113,8 @@ def marquer_recu(lot, utilisateur, adresse_ip=None):
         nouvelle_valeur={
             "statut_logistique": lot.statut_logistique,
             "date_reception": aujourd_hui.isoformat(),
+            "nombre_balles": lot.nombre_balles,
+            "nombre_balles_recues": nombre_recu,
             "depot_id": getattr(utilisateur, "depot_id", None),
         },
         adresse_ip=adresse_ip,
@@ -139,15 +159,34 @@ def filtrer_scans(date_debut=None, date_fin=None, conteneur=None, depot=None, ut
 
 def compteurs_par_categorie(scans):
     """
-    Pour chaque catégorie : nombre total de scans et nombre de balles uniques.
-    Les codes inconnus sont comptés à part.
+    Pour chaque catégorie : nombre total de scans, nombre de lots différents scannés,
+    et nombre de balles contenues dans ces lots. Les codes inconnus sont comptés à part.
     """
     reconnus = scans.exclude(resultat=ResultatScan.INCONNU)
-    lignes = list(
-        reconnus.values("categorie_lot__nom")
-        .annotate(scans=Count("id"), balles=Count("lot", distinct=True))
-        .order_by("categorie_lot__nom")
+
+    # Lots distincts scannés (avec leur catégorie au moment du scan et leur nombre de balles)
+    lots_vus = {}
+    for categorie, lot_id, nb_balles in reconnus.values_list("categorie_lot__nom", "lot_id", "lot__nombre_balles"):
+        lots_vus[(categorie, lot_id)] = nb_balles or 0
+
+    scans_par_categorie = dict(
+        reconnus.values("categorie_lot__nom").annotate(n=Count("id")).values_list("categorie_lot__nom", "n")
     )
-    totaux = reconnus.aggregate(scans=Count("id"), balles=Count("lot", distinct=True))
+    lignes = []
+    for categorie in sorted(scans_par_categorie, key=lambda c: c or ""):
+        lots_cat = [nb for (cat, _), nb in lots_vus.items() if cat == categorie]
+        lignes.append({
+            "categorie_lot__nom": categorie,
+            "scans": scans_par_categorie[categorie],
+            "lots": len(lots_cat),
+            "balles": sum(lots_cat),
+        })
+
+    lots_distincts = {lot_id: nb for (_, lot_id), nb in lots_vus.items()}
+    totaux = {
+        "scans": sum(scans_par_categorie.values()),
+        "lots": len(lots_distincts),
+        "balles": sum(lots_distincts.values()),
+    }
     inconnus = scans.filter(resultat=ResultatScan.INCONNU).count()
     return lignes, totaux, inconnus
