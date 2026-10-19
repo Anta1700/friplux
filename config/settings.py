@@ -33,6 +33,8 @@ DEBUG = True
 # Adresses autorisées. Pour tester depuis un téléphone sur le même Wi-Fi, ajoutez l'adresse IP
 # de l'ordinateur dans .env, par exemple : DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.20
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+# Origines HTTPS autorisées pour les formulaires (ex. tunnel de test, futur domaine)
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 
 
 # Application definition
