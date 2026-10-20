@@ -33,12 +33,9 @@
 <div class="carte">
   <div class="entete-balle">
     <div class="code">{{ lot.code_lot }}</div>
-    {% if lot.statut_logistique == StatutLogistique.RECU %}
-      <span class="pastille ok">Reçu</span>
-    {% elif lot.statut_logistique == StatutLogistique.ANNULE %}
+    {# Le compteur « N / total scannées » montre la réception ; seul un lot annulé est signalé ici. #}
+    {% if lot.statut_logistique == StatutLogistique.ANNULE %}
       <span class="pastille erreur">Annulé</span>
-    {% else %}
-      <span class="pastille attente">{{ lot.get_statut_logistique_display }}</span>
     {% endif %}
   </div>
   <div class="classement">
