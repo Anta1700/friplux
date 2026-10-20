@@ -5,20 +5,19 @@
 <style>
   .entete-balle { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
   .code { font-size: 1.35rem; font-weight: 750; letter-spacing: .01em; word-break: break-all; }
-  .classement { font-size: 1.2rem; font-weight: 650; margin: 10px 0 4px; }
-  .qualite { display: inline-block; margin-top: 4px; padding: 4px 12px; border-radius: 999px; background: #f3e6cf; color: #7a4e0f; font-weight: 700; }
+  .classement { font-size: 1.2rem; font-weight: 650; margin: 10px 0 8px; }
+  .pastilles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pastilles span { display: inline-block; padding: 5px 13px; border-radius: 999px; font-weight: 700; }
+  .qualite { background: #f3e6cf; color: #7a4e0f; }
+  .nb-balles { background: #e3ece9; color: var(--marque); }
+  /* Compteur de réception : rouge tant que toutes les balles ne sont pas scannées, vert ensuite */
+  .scannees { color: #fff; }
+  .scannees.incomplet { background: var(--erreur); }
+  .scannees.complet { background: var(--ok); }
   dl { display: grid; grid-template-columns: minmax(120px, 40%) 1fr; gap: 8px 12px; margin: 0; }
   dt { color: var(--doux); font-size: .92rem; }
   dd { margin: 0; font-weight: 550; }
   .vide { color: #9a9488; font-weight: 400; font-style: italic; }
-  .compteur { display: flex; gap: 10px; }
-  .compteur div { flex: 1; background: var(--fond); border-radius: 10px; padding: 10px; text-align: center; }
-  .compteur strong { display: block; font-size: 1.5rem; }
-  .nb-balles { display: inline-block; margin-left: 6px; padding: 4px 12px; border-radius: 999px; background: #e3ece9; color: var(--marque); font-weight: 700; }
-  .reception { background: var(--carte); border: 2px solid var(--ok); border-radius: var(--rayon); padding: 14px 16px; margin-bottom: 14px; }
-  .reception .ligne { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
-  .reception input[type=number] { width: 90px; font: inherit; font-size: 1.2rem; font-weight: 700; padding: 10px; border: 1px solid #cfc8b9; border-radius: 10px; text-align: center; }
-  .ecart { color: var(--erreur); font-weight: 700; }
 </style>
 {% endblock %}
 
@@ -27,10 +26,8 @@
 {% if scan and scan.resultat == "QR_REMPLACE" %}
   <div class="message error">
     ⚠ Cette étiquette (version {{ scan.qr_code.version }}) a été remplacée{% if qr_actif %} par la version {{ qr_actif.version }}{% endif %}.
-    Retirez-la des balles du lot et utilisez la nouvelle étiquette.
+    Retirez-la des balles du lot et utilisez la nouvelle étiquette. Cette balle n'a pas été comptée.
   </div>
-{% elif scan %}
-  <div class="message success">✓ Lot identifié{% if resume.nombre == 1 %} : premier scan de ce lot{% endif %}.</div>
 {% endif %}
 
 <div class="carte">
@@ -47,33 +44,24 @@
   <div class="classement">
     {{ lot.categorie_lot }}{% if lot.categorie_produit %} › {{ lot.categorie_produit.nom }}{% endif %}
   </div>
-  {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% else %}<span class="vide">Qualité non renseignée</span>{% endif %}
-  <span class="nb-balles">{{ lot.nombre_balles }} balle{{ lot.nombre_balles|pluralize }}</span>
+  <div class="pastilles">
+    {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% endif %}
+    <span class="nb-balles">{{ lot.nombre_balles }} balle{{ lot.nombre_balles|pluralize }}</span>
+    <span class="scannees {% if scannees >= lot.nombre_balles %}complet{% else %}incomplet{% endif %}"
+          title="Balles scannées sur balles annoncées">{{ scannees }} / {{ lot.nombre_balles }} scannée{{ scannees|pluralize }}</span>
+  </div>
   <p class="discret" style="margin-bottom:0">
     {% if lot.statut_ouverture == "OUVERT" %}Lot ouvert le {{ lot.date_ouverture|date:"d/m/Y" }}{% else %}Lot non ouvert{% endif %}
   </p>
 </div>
 
-{% if peut_recevoir %}
-  <form method="post" class="reception">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="recu">
-    <label for="nombre_recu">Balles reçues pour ce lot</label>
-    <div class="ligne">
-      <input type="number" id="nombre_recu" name="nombre_recu" value="{{ lot.nombre_balles }}" min="0" max="{{ lot.nombre_balles }}" inputmode="numeric" required>
-      <span>sur {{ lot.nombre_balles }} annoncée{{ lot.nombre_balles|pluralize }}</span>
-    </div>
-    <button type="submit" class="bouton succes">✓ Marquer comme reçu</button>
-  </form>
-{% endif %}
+<a class="bouton" href="{% url 'core:scanner' %}">Scanner la balle suivante</a>
 
 <div class="carte">
   <h2>Annoncé par le fournisseur</h2>
   <dl>
     <dt>Référence</dt>
     <dd>{% if lot.reference_fournisseur %}{{ lot.reference_fournisseur }}{% else %}<span class="vide">Non renseignée</span>{% endif %}</dd>
-    <dt>Balles</dt>
-    <dd>{{ lot.nombre_balles }}</dd>
     <dt>Poids total</dt>
     <dd>{{ lot.poids_kg }} kg{% if lot.nombre_balles > 1 %}<br><span class="discret">environ {{ lot.poids_moyen_balle }} kg par balle</span>{% endif %}</dd>
     {% if voir_prix %}
@@ -103,13 +91,6 @@
         {% if reception and reception.utilisateur %}<br><span class="discret">par {{ reception.utilisateur.get_full_name|default:reception.utilisateur }}</span>{% endif %}
       {% else %}<span class="vide">Pas encore reçu</span>{% endif %}
     </dd>
-    {% if lot.nombre_balles_recues is not None %}
-      <dt>Balles reçues</dt>
-      <dd>
-        {{ lot.nombre_balles_recues }} sur {{ lot.nombre_balles }}
-        {% if lot.balles_manquantes %}<br><span class="ecart">{{ lot.balles_manquantes }} manquante{{ lot.balles_manquantes|pluralize }}</span>{% endif %}
-      </dd>
-    {% endif %}
     <dt>Étiquette</dt>
     <dd>
       {% if qr_actif %}Version {{ qr_actif.version }}
@@ -117,22 +98,8 @@
       {% else %}<span class="vide">Aucune étiquette active</span>{% endif %}
     </dd>
   </dl>
-  <div class="compteur" style="margin-top:14px">
-    <div><strong>{{ resume.nombre }}</strong><span class="discret">scan{{ resume.nombre|pluralize }}</span></div>
-    <div><strong>{{ resume.premier.date_scan|date:"d/m"|default:"—" }}</strong><span class="discret">premier scan</span></div>
-    <div><strong>{{ resume.dernier.date_scan|date:"d/m"|default:"—" }}</strong><span class="discret">dernier scan</span></div>
-  </div>
 </div>
 
-{% if lot.notes and voir_prix %}
-{# Notes réservées aux administrateurs : elles peuvent contenir des prix d'achat. #}
-<div class="carte">
-  <h2>Notes</h2>
-  <p style="margin:0">{{ lot.notes|linebreaksbr }}</p>
-</div>
-{% endif %}
-
-<a class="bouton" href="{% url 'core:scanner' %}">Scanner un autre lot</a>
 {% if user.is_staff %}
   <a class="bouton secondaire" href="{% url 'admin:core_lots_change' lot.pk %}">Ouvrir dans l'administration</a>
 {% endif %}

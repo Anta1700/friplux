@@ -7,20 +7,24 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from .models import CategoriesLots, Conteneurs, Depots, Lots, ResultatScan, ScansLots, StatutLogistique, User
-from .scans import (
-    STATUTS_RECEVABLES,
-    ErreurReception,
-    compteurs_par_categorie,
-    derniere_reception,
-    enregistrer_scan,
-    filtrer_scans,
-    marquer_recu,
-    resume_scans_lot,
-)
+from .scans import EffetScan, compteurs_par_categorie, derniere_reception, enregistrer_scan, filtrer_scans
 
 
-def _adresse_ip(request):
-    return request.META.get("REMOTE_ADDR") or None
+def _message_scan(request, scan, effet):
+    """Message court et clair après un scan."""
+    lot = scan.lot
+    lot.refresh_from_db(fields=["nombre_balles_recues", "statut_logistique"])
+    compteur = f"{lot.nombre_balles_recues or 0} / {lot.nombre_balles}"
+    if effet == EffetScan.LOT_COMPLET:
+        messages.success(request, f"✓ Lot complet : {compteur} balles scannées.")
+    elif effet == EffetScan.BALLE_COMPTEE:
+        messages.success(request, f"Balle enregistrée : {compteur} scannées.")
+    elif effet == EffetScan.DEJA_COMPLET:
+        messages.info(request, f"Toutes les balles de ce lot sont déjà scannées ({compteur}).")
+    elif effet == EffetScan.DOUBLON:
+        messages.warning(request, f"Scan répété à l'instant : balle non recomptée ({compteur}).")
+    elif effet == EffetScan.NON_RECEVABLE:
+        messages.error(request, f"Lot {lot.get_statut_logistique_display().lower()} : balle non comptée.")
 
 
 @login_required
@@ -34,13 +38,14 @@ def scanner(request):
     """Page de scan. Le navigateur envoie le code lu (caméra, photo ou saisie) en POST."""
     if request.method == "POST":
         code = request.POST.get("code", "")
-        scan = enregistrer_scan(code, request.user)
+        scan, effet = enregistrer_scan(code, request.user)
         if scan.resultat == ResultatScan.INCONNU:
             messages.error(
                 request,
                 f"Code « {scan.code_scanne} » inconnu dans Frip'Lux. Vérifiez l'étiquette ou saisissez le code du lot.",
             )
             return redirect("core:scanner")
+        _message_scan(request, scan, effet)
         url = reverse("core:fiche_balle", args=[scan.lot.code_lot])
         return redirect(f"{url}?scan={scan.pk}")
 
@@ -53,7 +58,6 @@ def scanner(request):
 
 
 @login_required
-@require_http_methods(["GET", "POST"])
 def fiche_balle(request, code_lot):
     lot = get_object_or_404(
         Lots.objects.select_related(
@@ -61,21 +65,6 @@ def fiche_balle(request, code_lot):
         ),
         code_lot=code_lot,
     )
-
-    if request.method == "POST" and request.POST.get("action") == "recu":
-        try:
-            lot = marquer_recu(lot, request.user, _adresse_ip(request), request.POST.get("nombre_recu"))
-            if lot.balles_manquantes:
-                messages.warning(
-                    request,
-                    f"Lot {lot.code_lot} reçu avec {lot.nombre_balles_recues} balle(s) sur {lot.nombre_balles} : "
-                    f"{lot.balles_manquantes} manquante(s), écart enregistré.",
-                )
-            else:
-                messages.success(request, f"Lot {lot.code_lot} reçu aujourd'hui : {lot.nombre_balles_recues} balle(s).")
-        except ErreurReception as erreur:
-            messages.error(request, str(erreur))
-        return redirect("core:fiche_balle", code_lot=lot.code_lot)
 
     scan = None
     if request.GET.get("scan", "").isdigit():
@@ -85,9 +74,8 @@ def fiche_balle(request, code_lot):
         "lot": lot,
         "scan": scan,
         "qr_actif": lot.qr_codes.filter(actif=True).first(),
-        "resume": resume_scans_lot(lot),
         "reception": derniere_reception(lot),
-        "peut_recevoir": lot.statut_logistique in STATUTS_RECEVABLES,
+        "scannees": lot.nombre_balles_recues or 0,
         "voir_prix": request.user.is_staff,
         "StatutLogistique": StatutLogistique,
     }
