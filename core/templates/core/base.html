@@ -113,6 +113,7 @@
       <p class="discret sans-impression" style="text-align:center;margin-top:28px">
         Connecté : {{ user.get_full_name }}{% if user.depot %} · {{ user.depot.nom }}{% endif %}<br>
         <a href="{% url 'core:mot_de_passe' %}" style="color:var(--marque)">Changer mon mot de passe</a>
+        {% if user.is_superuser %} · <a href="{% url 'core:comptes' %}" style="color:var(--marque)">Mots de passe oubliés</a>{% endif %}
       </p>
     {% endif %}
   </main>

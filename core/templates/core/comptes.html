@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+{% block titre %}Mots de passe oubliés{% endblock %}
+{% block entete %}
+<style>
+  .employe { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ligne); }
+  .employe:last-child { border-bottom: 0; }
+  .employe .nom { font-weight: 650; }
+  .employe form { flex: none; }
+  .employe .bouton { width: auto; margin: 0; padding: 10px 12px; font-size: .92rem; }
+  .recherche { display: flex; gap: 8px; margin-bottom: 14px; }
+  .recherche .bouton { width: auto; margin: 0; padding: 12px 16px; }
+</style>
+{% endblock %}
+{% block contenu %}
+<h1>Mots de passe oubliés</h1>
+<p class="discret" style="margin-top:-8px">Choisissez la personne qui a oublié son mot de passe. Frip'Lux lui crée un mot de passe provisoire ;
+à sa prochaine connexion, elle choisira le sien.</p>
+
+<form method="get" class="recherche">
+  <input type="text" name="q" value="{{ recherche }}" placeholder="Nom ou identifiant">
+  <button type="submit" class="bouton secondaire">Chercher</button>
+</form>
+
+<div class="carte">
+  {% for e in employes %}
+    <div class="employe">
+      <div>
+        <div class="nom">{{ e.get_full_name }}</div>
+        <div class="discret">{{ e.username }}{% if e.depot %} · {{ e.depot.nom }}{% endif %}
+          {% if e.doit_changer_mot_de_passe %}<br><span class="pastille attente">provisoire en attente</span>{% endif %}</div>
+      </div>
+      {% if e.pk != user.pk %}
+        <form method="post" action="{% url 'core:compte_mot_de_passe_provisoire' e.pk %}">
+          {% csrf_token %}<button type="submit" class="bouton">Nouveau mot de passe</button>
+        </form>
+      {% endif %}
+    </div>
+  {% empty %}
+    <p class="discret">Personne ne correspond à cette recherche.</p>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,4 +1,5 @@
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from functools import partial
 
@@ -91,8 +92,35 @@ class UserAdmin(DjangoUserAdmin):
     def mot_de_passe_choisi(self, obj):
         return not obj.doit_changer_mot_de_passe
 
+    # Mots de passe : réservés au super-administrateur (case « Statut superutilisateur »).
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("donner_mot_de_passe_provisoire", None)
+        return actions
+
+    def has_change_permission(self, request, obj=None):
+        # Le compte d'un super-administrateur n'est modifiable que par un super-administrateur.
+        if obj is not None and obj.is_superuser and not request.user.is_superuser:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj is not None and obj.is_superuser and not request.user.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        champs = super().get_readonly_fields(request, obj)
+        if not request.user.is_superuser:
+            # Personne d'autre ne peut se donner (ou donner) les droits de super-administrateur.
+            champs = tuple(champs) + ("is_superuser", "doit_changer_mot_de_passe", "groups", "user_permissions")
+        return champs
+
     @admin.action(description="Donner un mot de passe provisoire (oubli du mot de passe)")
     def donner_mot_de_passe_provisoire(self, request, queryset):
+        if not request.user.is_superuser:
+            raise PermissionDenied
         for utilisateur in queryset:
             mot = donner_mot_de_passe_provisoire(utilisateur)
             self.message_user(
@@ -106,7 +134,9 @@ class UserAdmin(DjangoUserAdmin):
             )
 
     def user_change_password(self, request, id, form_url=""):
-        # « Modifier le mot de passe » depuis l'admin = mot de passe provisoire.
+        # « Modifier le mot de passe » depuis l'admin = mot de passe provisoire, super-administrateur seulement.
+        if not request.user.is_superuser:
+            raise PermissionDenied
         reponse = super().user_change_password(request, id, form_url)
         if request.method == "POST" and reponse.status_code == 302:
             User.objects.filter(pk=id).update(doit_changer_mot_de_passe=True)
@@ -172,6 +202,8 @@ class UserAdmin(DjangoUserAdmin):
                     "doit_changer_mot_de_passe",
                     "is_staff",
                     "is_superuser",
+                    "groups",
+                    "user_permissions",
                 )
             },
         ),
