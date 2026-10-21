@@ -38,6 +38,7 @@ from .models import (
     ScansLots,
 )
 from .admin_import import vue_apercu, vue_import
+from .depots import synchroniser_affectation
 from .services import (
     creer_qr_code,
     generer_code_lot,
@@ -55,6 +56,17 @@ from .services import (
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     ordering = ("username",)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # L'historique des affectations (user_depots) suit automatiquement le champ « Dépôt ».
+        if not change or "depot" in form.changed_data:
+            if not synchroniser_affectation(obj):
+                self.message_user(
+                    request,
+                    "Utilisateur enregistré, mais l'historique des dépôts n'a pas pu être mis à jour.",
+                    messages.WARNING,
+                )
 
     list_display = (
         "username",
@@ -854,14 +866,27 @@ class AffectationsPaiementsAdmin(admin.ModelAdmin):
 
 @admin.register(UserDepots)
 class UserDepotsAdmin(admin.ModelAdmin):
+    """
+    Historique des affectations, tenu automatiquement à partir du champ « Dépôt »
+    de chaque utilisateur : consultation seulement.
+    """
     list_display = (
-        "id",
         "user",
         "depot",
         "date_debut",
         "date_fin",
         "actif",
     )
+    list_select_related = ("user", "depot")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     list_filter = (
         "actif",

@@ -70,7 +70,7 @@
             {% if s.lot %}<a href="{% url 'core:fiche_balle' s.lot.code_lot %}">{{ s.lot.code_lot }}</a><br><span class="discret">{{ s.categorie_lot|default:"" }}</span>{% else %}{{ s.code_scanne }}{% endif %}
             {% if s.resultat == "QR_REMPLACE" %}<br><span class="pastille attente">ancienne étiquette</span>{% elif s.resultat == "INCONNU" %}<br><span class="pastille erreur">inconnu</span>{% endif %}
           </td>
-          <td class="discret">{{ s.utilisateur|default:"—" }}{% if s.depot %}<br>{{ s.depot }}{% endif %}</td>
+          <td class="discret">{% if s.utilisateur %}{{ s.utilisateur.get_full_name }}{% else %}—{% endif %}{% if s.depot %}<br>{{ s.depot }}{% else %}<br><em>sans dépôt</em>{% endif %}</td>
         </tr>
       {% endfor %}
     </tbody>

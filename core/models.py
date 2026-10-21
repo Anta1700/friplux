@@ -1004,6 +1004,8 @@ class UserDepots(models.Model):
         managed = False
         db_table = 'user_depots'
         unique_together = (('user', 'depot'),)
+        verbose_name = "affectation à un dépôt"
+        verbose_name_plural = "historique des affectations aux dépôts"
 
 
 class Ventes(models.Model):

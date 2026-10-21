@@ -88,8 +88,12 @@ class FiltresStatistiques(forms.Form):
     conteneur = forms.ModelChoiceField(Conteneurs.objects.order_by("-id"), required=False, empty_label="Tous")
     depot = forms.ModelChoiceField(Depots.objects.order_by("nom"), required=False, label="Dépôt", empty_label="Tous")
     utilisateur = forms.ModelChoiceField(
-        User.objects.filter(is_active=True).order_by("username"), required=False, empty_label="Tous"
+        User.objects.filter(is_active=True).order_by("first_name", "last_name"), required=False, empty_label="Tous"
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["utilisateur"].label_from_instance = lambda u: u.get_full_name()
 
 
 @login_required
