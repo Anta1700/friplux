@@ -141,3 +141,9 @@ AUTH_USER_MODEL = 'core.User'
 # Pages de connexion Frip'Lux (hors administration)
 LOGIN_URL = 'core:connexion'
 LOGIN_REDIRECT_URL = 'core:scanner'
+# Coordonnées imprimées en tête des factures (à renseigner dans .env)
+FRIPLUX_SOCIETE = {
+    "nom": os.getenv("FRIPLUX_NOM", "Frip'Lux"),
+    "adresse": os.getenv("FRIPLUX_ADRESSE", ""),
+    "telephone": os.getenv("FRIPLUX_TELEPHONE", ""),
+}

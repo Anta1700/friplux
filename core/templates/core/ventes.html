@@ -1,0 +1,113 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Vente{% endblock %}
+{% block menu_ventes %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .ligne-panier { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ligne); }
+  .ligne-panier:last-of-type { border-bottom: 0; }
+  .ligne-panier .quoi { font-weight: 650; }
+  .ligne-panier .calcul { color: var(--doux); font-size: .92rem; font-variant-numeric: tabular-nums; }
+  .ligne-panier .montant { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+  .ligne-panier a { color: var(--marque); text-decoration: none; }
+  .total-panier { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; padding-top: 10px; border-top: 2px solid var(--marque); }
+  .vide-panier { text-align: center; padding: 10px 0 4px; color: var(--doux); }
+  .jour { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .jour div { background: #f7f5ef; border-radius: 10px; padding: 10px; }
+  .jour b { display: block; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .jour span { color: var(--doux); font-size: .85rem; }
+  .liste-ventes a { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--ligne); color: inherit; text-decoration: none; }
+  .liste-ventes a:last-child { border-bottom: 0; }
+  .liste-ventes .num { font-weight: 650; color: var(--marque); }
+  .liste-ventes .droite { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .retard { color: var(--erreur); font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Vente</h1>
+
+<div class="carte">
+  <h2>Vente en cours</h2>
+  {% if lignes %}
+    {% for l in lignes %}
+      <div class="ligne-panier">
+        <div>
+          <div class="quoi">{{ l.designation }}</div>
+          <div class="calcul">
+            <a href="{% url 'core:vente_ajouter' l.lot.code_lot %}">{{ l.lot.code_lot }}</a><br>
+            {{ l.nombre_balles }} balle{{ l.nombre_balles|pluralize }} × {{ l.prix_unitaire|fcfa }}
+          </div>
+        </div>
+        <div class="montant">
+          {{ l.montant_ligne|fcfa }}<br>
+          <form method="post" action="{% url 'core:vente_retirer' l.pk %}">{% csrf_token %}
+            <button type="submit" class="lien-discret">Retirer</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+    <div class="total-panier">
+      <span>Total</span>
+      <span class="gros-total">{{ vente.montant_total|fcfa }}</span>
+    </div>
+    <a class="bouton secondaire" href="{% url 'core:vente_scanner' %}">＋ Ajouter une autre balle</a>
+    <a class="bouton succes" href="{% url 'core:vente_valider' %}">Valider la vente</a>
+    <form method="post" action="{% url 'core:vente_abandonner' %}" style="text-align:center;margin-top:6px">{% csrf_token %}
+      <button type="submit" class="lien-discret">Abandonner cette vente</button>
+    </form>
+  {% else %}
+    <p class="vide-panier">Aucune balle pour l'instant.</p>
+    <a class="bouton" href="{% url 'core:vente_scanner' %}">📷 Scanner une balle à vendre</a>
+  {% endif %}
+</div>
+
+<div class="carte">
+  <h2>Aujourd'hui{% if not user.is_staff and user.depot %} · {{ user.depot.nom }}{% endif %}</h2>
+  <div class="jour">
+    <div><b>{{ jour.ventes }}</b><span>vente{{ jour.ventes|pluralize }}</span></div>
+    <div><b>{{ jour.balles }}</b><span>balle{{ jour.balles|pluralize }} vendue{{ jour.balles|pluralize }}</span></div>
+    <div><b>{{ jour.montant|fcfa_nombre }}</b><span>FCFA vendus</span></div>
+    <div><b>{{ jour.encaisse|fcfa_nombre }}</b><span>FCFA encaissés</span></div>
+  </div>
+</div>
+
+{% if a_encaisser %}
+<div class="carte liste-ventes">
+  <h2>Reste à encaisser</h2>
+  {% for v in a_encaisser %}
+    <a href="{% url 'core:vente_detail' v.pk %}">
+      <div>
+        <div class="num">{{ v.client.nom|default:"Client de passage" }}</div>
+        <div class="discret">{{ v.numero_vente }} · {{ v.date_vente|date:"d/m/Y" }}</div>
+      </div>
+      <div class="droite">
+        <b>{{ v.reste|fcfa }}</b><br>
+        {% if v.en_retard %}<span class="retard">En retard</span>{% else %}<span class="discret">à payer</span>{% endif %}
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if dernieres %}
+<div class="carte liste-ventes">
+  <h2>Dernières ventes</h2>
+  {% for v in dernieres %}
+    <a href="{% url 'core:vente_detail' v.pk %}">
+      <div>
+        <div class="num">{{ v.numero_vente }}</div>
+        <div class="discret">{{ v.date_vente|date:"d/m H:i" }} · {{ v.client.nom|default:"Client de passage" }}</div>
+      </div>
+      <div class="droite">
+        <b>{{ v.montant_total|fcfa }}</b><br>
+        {% if v.facture.statut == "PAYEE" %}<span class="pastille ok">Payée</span>
+        {% elif v.facture.statut == "EMISE" %}<span class="pastille attente">Reste à payer</span>
+        {% else %}<span class="pastille erreur">Annulée</span>{% endif %}
+      </div>
+    </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

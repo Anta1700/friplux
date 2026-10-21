@@ -1,0 +1,99 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Vendre {{ lot.code_lot }}{% endblock %}
+{% block menu_ventes %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .code { font-size: 1.2rem; font-weight: 750; word-break: break-all; }
+  .classement { font-size: 1.15rem; font-weight: 650; margin: 8px 0; }
+  .pastilles span { display: inline-block; padding: 5px 13px; border-radius: 999px; font-weight: 700; margin: 0 6px 6px 0; }
+  .qualite { background: #f3e6cf; color: #7a4e0f; }
+  .dispo { background: var(--ok-fond); color: var(--ok); }
+  .dispo.zero { background: var(--erreur-fond); color: var(--erreur); }
+  .compteur { display: flex; align-items: center; gap: 10px; }
+  .compteur button { width: 56px; height: 56px; border-radius: 14px; border: 2px solid var(--marque); background: #fff; color: var(--marque); font-size: 1.8rem; font-weight: 700; cursor: pointer; flex: none; }
+  .compteur input { text-align: center; font-size: 1.6rem; font-weight: 800; padding: 8px; height: 56px; }
+  .prix input { font-size: 1.4rem; font-weight: 700; }
+  .total-ligne { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 0; border-top: 1px solid var(--ligne); }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+  <div class="code">{{ lot.code_lot }}</div>
+  <div class="classement">{{ lot.categorie_lot }}{% if lot.categorie_produit %} › {{ lot.categorie_produit.nom }}{% endif %}</div>
+  <div class="pastilles">
+    {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% endif %}
+    <span class="dispo {% if not disponibles %}zero{% endif %}">{{ disponibles }} balle{{ disponibles|pluralize }} disponible{{ disponibles|pluralize }}</span>
+  </div>
+  {% if ligne %}<p class="discret" style="margin:4px 0 0">Déjà dans la vente : {{ ligne.nombre_balles }} balle{{ ligne.nombre_balles|pluralize }}. Vous pouvez modifier.</p>{% endif %}
+</div>
+
+{% if not disponibles %}
+  <div class="message error">
+    {% if lot.statut_logistique == "ANNULE" %}Ce lot est annulé : il ne peut pas être vendu.
+    {% elif not lot.nombre_balles_recues %}Ce lot n'a pas encore été réceptionné. Scannez d'abord ses balles avec « Scanner » (réception).
+    {% else %}Toutes les balles de ce lot sont déjà vendues.{% endif %}
+  </div>
+  <a class="bouton secondaire" href="{% url 'core:vente_scanner' %}">Scanner une autre balle</a>
+  <a class="bouton secondaire" href="{% url 'core:ventes' %}">Retour à la vente</a>
+{% else %}
+<form method="post" class="carte" id="form-ajout">
+  {% csrf_token %}
+  <div class="champ">
+    <label for="id_nombre">Nombre de balles</label>
+    <div class="compteur">
+      <button type="button" data-pas="-1" aria-label="Une balle de moins">−</button>
+      <input type="number" name="nombre" id="id_nombre" min="1" max="{{ disponibles }}" inputmode="numeric"
+             value="{{ formulaire.nombre.value|default:1 }}" required>
+      <button type="button" data-pas="1" aria-label="Une balle de plus">+</button>
+    </div>
+    {% for e in formulaire.nombre.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="champ prix">
+    <label for="id_prix">Prix par balle (FCFA)</label>
+    {{ formulaire.prix }}
+    {% if conseille %}<div class="discret">Prix conseillé : {{ conseille|fcfa }}</div>
+    {% else %}<div class="discret">Pas de prix conseillé pour ce lot : saisissez le prix convenu.</div>{% endif %}
+    {% for e in formulaire.prix.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+  </div>
+
+  <div class="total-ligne">
+    <span>Total pour ce lot</span>
+    <span class="gros-total" id="total-ligne">—</span>
+  </div>
+  <button type="submit" class="bouton succes">{% if ligne %}Modifier dans la vente{% else %}Ajouter à la vente{% endif %}</button>
+</form>
+<a class="bouton secondaire" href="{% url 'core:ventes' %}">Annuler</a>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var nombre = document.getElementById("id_nombre"), prix = document.getElementById("id_prix"), total = document.getElementById("total-ligne");
+  if (!nombre) return;
+  var max = parseInt(nombre.max, 10) || 1;
+  function chiffres(v) { return parseInt(String(v).replace(/\D/g, ""), 10) || 0; }
+  function format(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+  function maj() {
+    var n = chiffres(nombre.value), p = chiffres(prix.value);
+    total.textContent = n && p ? format(n * p) + " FCFA" : "—";
+  }
+  document.querySelectorAll("[data-pas]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var n = chiffres(nombre.value) + parseInt(b.dataset.pas, 10);
+      nombre.value = Math.max(1, Math.min(max, n)); maj();
+    });
+  });
+  prix.addEventListener("input", function () {
+    var p = chiffres(prix.value); prix.value = p ? format(p) : ""; maj();
+  });
+  nombre.addEventListener("input", maj);
+  if (chiffres(prix.value)) prix.value = format(chiffres(prix.value));
+  maj();
+})();
+</script>
+{% endblock %}

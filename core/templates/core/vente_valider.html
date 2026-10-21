@@ -1,0 +1,146 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Valider la vente{% endblock %}
+{% block menu_ventes %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .recap { display: flex; justify-content: space-between; align-items: baseline; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .modes label { margin: 0; }
+  .modes input { position: absolute; opacity: 0; pointer-events: none; }
+  .modes span { display: block; text-align: center; padding: 13px 6px; border: 2px solid #cfc8b9; border-radius: 12px; font-weight: 650; background: #fff; cursor: pointer; }
+  .modes input:checked + span { border-color: var(--marque); background: var(--marque); color: #fff; }
+  .modes input:focus-visible + span { outline: 3px solid var(--accent); }
+  .montant-paye input { font-size: 1.4rem; font-weight: 700; }
+  .reste { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--alerte-fond); color: var(--alerte); font-weight: 650; }
+  .reste b { font-size: 1.25rem; }
+  .deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .requis { color: var(--erreur); font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Valider la vente</h1>
+
+<div class="carte">
+  <div class="recap">
+    <span>{{ balles }} balle{{ balles|pluralize }} · {{ lignes|length }} lot{{ lignes|length|pluralize }}</span>
+    <span class="gros-total">{{ total|fcfa }}</span>
+  </div>
+  <a href="{% url 'core:ventes' %}" class="discret">Modifier la vente</a>
+</div>
+
+<form method="post" id="form-validation">
+  {% csrf_token %}
+  {% for e in formulaire.non_field_errors %}<div class="message error">{{ e }}</div>{% endfor %}
+
+  <div class="carte">
+    <h2>Paiement</h2>
+    <div class="champ montant-paye">
+      <label for="id_montant_paye">{{ formulaire.montant_paye.label }}</label>
+      {{ formulaire.montant_paye }}
+      {% for e in formulaire.montant_paye.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+      <div class="reste cache" id="bloc-reste"><span>Reste à payer</span><b id="reste">0</b></div>
+    </div>
+
+    <div class="champ" id="bloc-mode">
+      <label>{{ formulaire.mode_paiement.label }}</label>
+      <div class="modes">
+        {% for radio in formulaire.mode_paiement %}
+          <label>{{ radio.tag }}<span>{{ radio.choice_label }}</span></label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="champ cache" id="bloc-reference">
+      <label for="id_reference">{{ formulaire.reference.label }}</label>
+      {{ formulaire.reference }}
+    </div>
+  </div>
+
+  <div class="carte cache" id="bloc-moratoire">
+    <h2>Reste à payer plus tard</h2>
+    <div class="deux">
+      <div class="champ">
+        <label for="id_nombre_echeances">{{ formulaire.nombre_echeances.label }}</label>
+        <select name="nombre_echeances" id="id_nombre_echeances">
+          {% for n in "123456789ABC"|make_list %}
+            <option value="{{ forloop.counter }}" {% if formulaire.nombre_echeances.value|stringformat:"s" == forloop.counter|stringformat:"s" %}selected{% endif %}>
+              {{ forloop.counter }} fois</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="champ">
+        <label for="id_date_premiere_echeance">{{ formulaire.date_premiere_echeance.label }}</label>
+        {{ formulaire.date_premiere_echeance }}
+      </div>
+    </div>
+    <p class="discret" id="detail-echeances" style="margin:0">Une échéance par mois.</p>
+  </div>
+
+  <div class="carte">
+    <h2>Client <span class="discret" id="client-facultatif" style="text-transform:none;letter-spacing:0">(facultatif)</span>
+      <span class="requis cache" id="client-obligatoire" style="text-transform:none;letter-spacing:0">(obligatoire)</span></h2>
+    <div class="champ">
+      <label for="id_client_telephone">{{ formulaire.client_telephone.label }}</label>
+      {{ formulaire.client_telephone }}
+    </div>
+    <div class="champ" style="margin-bottom:0">
+      <label for="id_client_nom">{{ formulaire.client_nom.label }}</label>
+      {{ formulaire.client_nom }}
+      <div class="discret">Laissez vide pour un client de passage.</div>
+    </div>
+  </div>
+
+  <button type="submit" class="bouton succes" id="btn-valider">Valider et faire la facture</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var total = {{ total }};
+  var paye = document.getElementById("id_montant_paye");
+  var tel = document.getElementById("id_client_telephone"), nom = document.getElementById("id_client_nom");
+  var nb = document.getElementById("id_nombre_echeances");
+  function chiffres(v) { return parseInt(String(v).replace(/\D/g, ""), 10) || 0; }
+  function format(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+  function montre(id, oui) { document.getElementById(id).classList.toggle("cache", !oui); }
+
+  function maj() {
+    var p = Math.min(chiffres(paye.value), total), reste = total - p;
+    montre("bloc-reste", reste > 0);
+    montre("bloc-moratoire", reste > 0);
+    montre("client-facultatif", reste <= 0);
+    montre("client-obligatoire", reste > 0);
+    montre("bloc-mode", p > 0);
+    tel.required = nom.required = reste > 0;
+    document.getElementById("reste").textContent = format(reste) + " FCFA";
+    var n = parseInt(nb.value, 10) || 1;
+    document.getElementById("detail-echeances").textContent =
+      n === 1 ? "En une fois : " + format(reste) + " FCFA." : n + " échéances mensuelles d'environ " + format(Math.floor(reste / n)) + " FCFA.";
+    var mode = document.querySelector("input[name=mode_paiement]:checked");
+    montre("bloc-reference", p > 0 && mode && mode.value !== "ESPECES");
+  }
+  paye.addEventListener("input", function () { var p = chiffres(paye.value); paye.value = p || paye.value === "0" ? format(p) : ""; maj(); });
+  nb.addEventListener("change", maj);
+  document.querySelectorAll("input[name=mode_paiement]").forEach(function (r) { r.addEventListener("change", maj); });
+
+  // Client connu : son nom se remplit tout seul à partir du téléphone.
+  tel.addEventListener("change", function () {
+    if (nom.value.trim()) return;
+    fetch("{% url 'core:client_par_telephone' %}?telephone=" + encodeURIComponent(tel.value), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.nom && !nom.value.trim()) nom.value = d.nom; })
+      .catch(function () {});
+  });
+
+  document.getElementById("form-validation").addEventListener("submit", function () {
+    document.getElementById("btn-valider").disabled = true;   // évite de valider deux fois
+  });
+  if (chiffres(paye.value)) paye.value = format(chiffres(paye.value));
+  maj();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Encaisser {{ vente.numero_vente }}{% endblock %}
+{% block menu_ventes %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .modes label { margin: 0; }
+  .modes input { position: absolute; opacity: 0; pointer-events: none; }
+  .modes span { display: block; text-align: center; padding: 13px 6px; border: 2px solid #cfc8b9; border-radius: 12px; font-weight: 650; background: #fff; cursor: pointer; }
+  .modes input:checked + span { border-color: var(--marque); background: var(--marque); color: #fff; }
+  .montant input { font-size: 1.4rem; font-weight: 700; }
+  .ligne { display: flex; justify-content: space-between; padding: 4px 0; }
+  .retard { color: var(--erreur); font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Encaisser un paiement</h1>
+
+<div class="carte">
+  <div style="font-weight:700">{{ vente.client.nom|default:"Client de passage" }}{% if vente.client.telephone %} · {{ vente.client.telephone }}{% endif %}</div>
+  <div class="discret">{{ vente.numero_vente }} · facture {{ facture.numero_facture }}</div>
+  <div class="ligne" style="margin-top:10px"><span>Total de la vente</span><b>{{ vente.montant_total|fcfa }}</b></div>
+  <div class="ligne"><span>Déjà payé</span><b>{{ paye|fcfa }}</b></div>
+  <div class="ligne"><span>Reste à payer</span><span class="gros-total" style="font-size:1.4rem">{{ reste|fcfa }}</span></div>
+  {% if prochaine %}
+    <p class="discret" style="margin:8px 0 0">Prochaine échéance : n° {{ prochaine.numero_echeance }} du {{ prochaine.date_echeance|date:"d/m/Y" }}
+      {% if prochaine.en_retard %}<span class="retard">(en retard)</span>{% endif %}</p>
+  {% endif %}
+</div>
+
+<form method="post" class="carte" id="form-encaissement">
+  {% csrf_token %}
+  <div class="champ montant">
+    <label for="id_montant">{{ formulaire.montant.label }}</label>
+    {{ formulaire.montant }}
+    {% for e in formulaire.montant.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+  </div>
+  <div class="champ">
+    <label>{{ formulaire.mode_paiement.label }}</label>
+    <div class="modes">
+      {% for radio in formulaire.mode_paiement %}<label>{{ radio.tag }}<span>{{ radio.choice_label }}</span></label>{% endfor %}
+    </div>
+  </div>
+  <div class="champ cache" id="bloc-reference">
+    <label for="id_reference">{{ formulaire.reference.label }}</label>
+    {{ formulaire.reference }}
+  </div>
+  <button type="submit" class="bouton succes" id="btn-encaisser">Enregistrer le paiement</button>
+</form>
+<a class="bouton secondaire" href="{% url 'core:vente_detail' vente.pk %}">Retour à la facture</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var m = document.getElementById("id_montant");
+  function chiffres(v) { return parseInt(String(v).replace(/\D/g, ""), 10) || 0; }
+  function format(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+  m.addEventListener("input", function () { var p = chiffres(m.value); m.value = p ? format(p) : ""; });
+  if (chiffres(m.value)) m.value = format(chiffres(m.value));
+  function ref() {
+    var mode = document.querySelector("input[name=mode_paiement]:checked");
+    document.getElementById("bloc-reference").classList.toggle("cache", !mode || mode.value === "ESPECES");
+  }
+  document.querySelectorAll("input[name=mode_paiement]").forEach(function (r) { r.addEventListener("change", ref); });
+  ref();
+  document.getElementById("form-encaissement").addEventListener("submit", function () { document.getElementById("btn-encaisser").disabled = true; });
+})();
+</script>
+{% endblock %}

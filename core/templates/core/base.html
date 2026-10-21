@@ -60,7 +60,7 @@
     .bouton.secondaire { background: #fff; color: var(--marque); border: 2px solid var(--marque); }
     .bouton.succes { background: var(--ok); }
     .bouton[disabled] { opacity: .5; cursor: not-allowed; }
-    input[type=text], input[type=date], input[type=password], select {
+    input[type=text], input[type=date], input[type=password], input[type=number], input[type=tel], select {
       width: 100%; max-width: 100%; font: inherit; padding: 12px; border: 1px solid #cfc8b9; border-radius: 10px; background: #fff;
     }
     label { font-weight: 600; font-size: .92rem; display: block; margin: 0 0 4px; }
@@ -74,7 +74,18 @@
     th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--ligne); vertical-align: top; }
     th { font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; color: var(--doux); }
     td.nombre, th.nombre { text-align: right; font-variant-numeric: tabular-nums; }
+    .gros-total { font-size: 1.9rem; font-weight: 800; color: var(--marque); font-variant-numeric: tabular-nums; }
+    .champ { margin-bottom: 14px; }
+    .erreur-champ { color: var(--erreur); font-size: .88rem; margin-top: 4px; }
+    .lien-discret { background: none; border: 0; padding: 0; font: inherit; color: var(--erreur); text-decoration: underline; cursor: pointer; }
+    .cache { display: none !important; }
     @media (min-width: 640px) { main { padding-top: 24px; } }
+    @media print {
+      header.bandeau, .sans-impression, .message { display: none !important; }
+      body { background: #fff; }
+      main { max-width: none; padding: 0; }
+      .carte { border: 0; padding: 0; }
+    }
   </style>
   {% block entete %}{% endblock %}
 </head>
@@ -84,7 +95,8 @@
     {% if user.is_authenticated %}
       <nav class="menu">
         <a href="{% url 'core:scanner' %}" class="{% block menu_scanner %}{% endblock %}">Scanner</a>
-        <a href="{% url 'core:statistiques' %}" class="{% block menu_stats %}{% endblock %}">Statistiques</a>
+        <a href="{% url 'core:ventes' %}" class="{% block menu_ventes %}{% endblock %}">Vente</a>
+        <a href="{% url 'core:statistiques' %}" class="{% block menu_stats %}{% endblock %}">Stats</a>
         {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
         <form method="post" action="{% url 'core:deconnexion' %}" style="display:inline">
           {% csrf_token %}<button type="submit">Quitter</button>

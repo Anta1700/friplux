@@ -1,0 +1,121 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Facture {{ facture.numero_facture }}{% endblock %}
+{% block menu_ventes %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .facture { background: #fff; border: 1px solid var(--ligne); border-radius: var(--rayon); padding: 18px; margin-bottom: 14px; }
+  .tete { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; border-bottom: 2px solid var(--marque); padding-bottom: 12px; margin-bottom: 12px; }
+  .societe-nom { font-size: 1.35rem; font-weight: 800; color: var(--marque); }
+  .societe { white-space: pre-line; color: var(--doux); font-size: .92rem; }
+  .titre-facture { text-align: right; }
+  .titre-facture .mot { font-size: 1.3rem; font-weight: 800; letter-spacing: .06em; }
+  .titre-facture .num { font-weight: 700; }
+  .infos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 14px; font-size: .95rem; }
+  .infos dt { color: var(--doux); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+  .infos dd { margin: 0; font-weight: 600; }
+  .lignes { font-size: .92rem; }
+  .lignes th, .lignes td { padding: 8px 4px; }
+  .lignes td.nombre { white-space: nowrap; }
+  .lignes td .code { color: var(--doux); font-size: .8rem; word-break: break-all; }
+  .lignes tfoot td { border-bottom: 0; font-weight: 800; font-size: 1.1rem; }
+  .lettres { margin: 10px 0 0; font-size: .92rem; }
+  .bilan { margin-top: 12px; }
+  .bilan td { padding: 6px; }
+  .reste-du td { color: var(--erreur); font-weight: 800; font-size: 1.1rem; }
+  .tampon { display: inline-block; padding: 4px 12px; border: 3px solid; border-radius: 8px; font-weight: 800; letter-spacing: .08em; transform: rotate(-4deg); }
+  .tampon.ok { color: var(--ok); }
+  .tampon.attente { color: var(--alerte); }
+  .tampon.erreur { color: var(--erreur); }
+  .retard { color: var(--erreur); font-weight: 700; }
+  .pied { margin-top: 18px; text-align: center; color: var(--doux); font-size: .85rem; }
+  @media print { .facture { border: 0; padding: 0; } @page { margin: 12mm; } }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<div class="facture">
+  <div class="tete">
+    <div>
+      <div class="societe-nom">{{ societe.nom }}</div>
+      <div class="societe">{% if societe.adresse %}{{ societe.adresse }}{% endif %}{% if societe.telephone %}
+Tél. {{ societe.telephone }}{% endif %}</div>
+    </div>
+    <div class="titre-facture">
+      <div class="mot">FACTURE</div>
+      <div class="num">{{ facture.numero_facture }}</div>
+      <div class="discret">du {{ facture.date_facture|date:"d/m/Y à H:i" }}</div>
+      <div style="margin-top:8px">
+        {% if vente.statut == "ANNULEE" %}<span class="tampon erreur">ANNULÉE</span>
+        {% elif reste %}<span class="tampon attente">RESTE À PAYER</span>
+        {% else %}<span class="tampon ok">PAYÉE</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <dl class="infos">
+    <div><dt>Client</dt><dd>{% if vente.client %}{{ vente.client.nom }}{% if vente.client.telephone %}<br><span class="discret">{{ vente.client.telephone }}</span>{% endif %}{% else %}Client de passage{% endif %}</dd></div>
+    <div><dt>Vente</dt><dd>{{ vente.numero_vente }}</dd></div>
+    <div><dt>Dépôt</dt><dd>{{ vente.depot.nom }}</dd></div>
+    <div><dt>Vendeur</dt><dd>{{ vente.vendeur.get_full_name|default:vente.vendeur }}</dd></div>
+  </dl>
+
+  <table class="lignes">
+    <thead><tr><th>Désignation</th><th class="nombre">Balles</th><th class="nombre">Prix</th><th class="nombre">Montant</th></tr></thead>
+    <tbody>
+      {% for l in lignes %}
+        <tr>
+          <td>{{ l.designation }}<br><span class="code">{{ l.lot.code_lot }}</span></td>
+          <td class="nombre">{{ l.nombre_balles }}</td>
+          <td class="nombre">{{ l.prix_unitaire|fcfa_nombre }}</td>
+          <td class="nombre">{{ l.montant_ligne|fcfa_nombre }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td class="nombre">{{ balles }}</td><td></td><td class="nombre">{{ vente.montant_total|fcfa_nombre }}</td></tr></tfoot>
+  </table>
+  <p class="discret" style="margin:4px 0 0;text-align:right">Montants en francs CFA</p>
+  <p class="lettres">Arrêtée la présente facture à la somme de : <b>{{ vente.montant_total|en_lettres }}</b>.</p>
+
+  {% if vente.statut != "ANNULEE" %}
+  <table class="bilan">
+    {% for p in paiements %}
+      <tr><td>Payé le {{ p.date_paiement|date:"d/m/Y" }} · {{ p.get_mode_paiement_display }}{% if p.reference %} <span class="discret">({{ p.reference }})</span>{% endif %}</td>
+          <td class="nombre">{{ p.montant|fcfa }}</td></tr>
+    {% endfor %}
+    {% if reste %}<tr class="reste-du"><td>Reste à payer</td><td class="nombre">{{ reste|fcfa }}</td></tr>{% endif %}
+  </table>
+  {% endif %}
+
+  {% if echeances %}
+    <h2 style="margin-top:16px">Échéancier</h2>
+    <table>
+      <thead><tr><th>N°</th><th>Date</th><th class="nombre">Montant</th><th>État</th></tr></thead>
+      <tbody>
+        {% for e in echeances %}
+          <tr>
+            <td>{{ e.numero_echeance }}</td>
+            <td>{{ e.date_echeance|date:"d/m/Y" }}</td>
+            <td class="nombre">{{ e.montant_prevu|fcfa_nombre }}</td>
+            <td>{% if e.en_retard %}<span class="retard">En retard</span>{% if e.paye %} <span class="discret">({{ e.paye|fcfa_nombre }} payés)</span>{% endif %}
+                {% elif e.statut == "PARTIELLE" %}{{ e.paye|fcfa_nombre }} payés
+                {% else %}{{ e.get_statut_display }}{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <p class="pied">Merci de votre confiance.</p>
+</div>
+
+<div class="sans-impression">
+  {% if reste and vente.statut == "VALIDEE" %}
+    <a class="bouton succes" href="{% url 'core:vente_encaisser' vente.pk %}">Encaisser un paiement</a>
+  {% endif %}
+  <button type="button" class="bouton secondaire" onclick="window.print()">🖨 Imprimer / enregistrer en PDF</button>
+  <a class="bouton" href="{% url 'core:vente_scanner' %}">Nouvelle vente</a>
+  {% if user.is_staff %}<a class="bouton secondaire" href="{% url 'admin:core_ventes_change' vente.pk %}">Ouvrir dans l'administration</a>{% endif %}
+</div>
+{% endblock %}

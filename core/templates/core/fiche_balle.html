@@ -88,7 +88,12 @@
         {% if reception and reception.utilisateur %}<br><span class="discret">par {{ reception.utilisateur.get_full_name|default:reception.utilisateur }}</span>{% endif %}
       {% else %}<span class="vide">Pas encore reçu</span>{% endif %}
     </dd>
-    <dt>Étiquette</dt>
+    <dt>Vente</dt>
+    <dd>
+      {% if vendues %}{{ vendues }} balle{{ vendues|pluralize }} vendue{{ vendues|pluralize }}<br>{% endif %}
+      <span class="{% if disponibles %}{% else %}discret{% endif %}">{{ disponibles }} disponible{{ disponibles|pluralize }} à la vente</span>
+    </dd>
+        <dt>Étiquette</dt>
     <dd>
       {% if qr_actif %}Version {{ qr_actif.version }}
         {% if qr_actif.date_activation %}<br><span class="discret">activée le {{ qr_actif.date_activation|date:"d/m/Y à H:i" }}</span>{% endif %}

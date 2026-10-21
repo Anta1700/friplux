@@ -181,8 +181,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class AffectationsPaiements(models.Model):
     id = models.BigAutoField(primary_key=True)
-    paiement = models.ForeignKey('Paiements', models.DO_NOTHING)
-    echeance = models.ForeignKey('EcheancesMoratoire', models.DO_NOTHING)
+    paiement = models.ForeignKey('Paiements', models.DO_NOTHING, related_name="affectations")
+    echeance = models.ForeignKey('EcheancesMoratoire', models.DO_NOTHING, related_name="affectations")
     montant_affecte = models.DecimalField(max_digits=15, decimal_places=2)
 
     class Meta:
@@ -256,26 +256,31 @@ class CategoriesProduits(models.Model):
         return self.nom
 
 
+class TypeClient(models.TextChoices):
+    PARTICULIER = "PARTICULIER", "Particulier"
+    PROFESSIONNEL = "PROFESSIONNEL", "Professionnel"
+
+
 class Clients(models.Model):
     id = models.BigAutoField(primary_key=True)
-    code_client = models.CharField(
-        unique=True,
-        max_length=50,
-        blank=True,
-        null=True
-    )
+    code_client = models.CharField("code client", unique=True, max_length=50, blank=True, null=True)
     nom = models.CharField(max_length=150)
-    telephone = models.CharField(max_length=30, blank=True, null=True)
+    telephone = models.CharField("téléphone", max_length=30, blank=True, null=True)
     email = models.CharField(max_length=254, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
-    type_client = models.CharField(max_length=30)
-    actif = models.BooleanField()
+    type_client = models.CharField("type", max_length=30, choices=TypeClient.choices, default=TypeClient.PARTICULIER)
+    actif = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         managed = False
         db_table = 'clients'
+        verbose_name = "client"
+        verbose_name_plural = "clients"
+
+    def __str__(self):
+        return f"{self.nom} ({self.telephone})" if self.telephone else self.nom
 
 
 class Conteneurs(models.Model):
@@ -323,47 +328,54 @@ class Depots(models.Model):
         return self.nom
 
 
+class StatutEcheance(models.TextChoices):
+    A_PAYER = "A_PAYER", "À payer"
+    PARTIELLE = "PARTIELLE", "Payée en partie"
+    PAYEE = "PAYEE", "Payée"
+    ANNULEE = "ANNULEE", "Annulée"
+
+
 class EcheancesMoratoire(models.Model):
     id = models.BigAutoField(primary_key=True)
-    moratoire = models.ForeignKey(
-        'Moratoires',
-        models.DO_NOTHING
-    )
-    numero_echeance = models.IntegerField()
-    date_echeance = models.DateField()
-    montant_prevu = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
-    )
-    statut = models.CharField(max_length=20)
+    moratoire = models.ForeignKey('Moratoires', models.DO_NOTHING, related_name="echeances")
+    numero_echeance = models.IntegerField("n°")
+    date_echeance = models.DateField("date")
+    montant_prevu = models.DecimalField("montant", max_digits=15, decimal_places=2)
+    statut = models.CharField(max_length=20, choices=StatutEcheance.choices, default=StatutEcheance.A_PAYER)
 
     class Meta:
         managed = False
         db_table = 'echeances_moratoire'
         unique_together = (('moratoire', 'numero_echeance'),)
+        ordering = ("numero_echeance",)
+        verbose_name = "échéance"
+        verbose_name_plural = "échéances"
+
+
+class StatutFacture(models.TextChoices):
+    EMISE = "EMISE", "Émise (reste à payer)"
+    PAYEE = "PAYEE", "Payée"
+    ANNULEE = "ANNULEE", "Annulée"
 
 
 class Factures(models.Model):
     id = models.BigAutoField(primary_key=True)
-    numero_facture = models.CharField(unique=True, max_length=50)
-
-    vente = models.OneToOneField(
-        'Ventes',
-        models.DO_NOTHING
-    )
-
-    date_facture = models.DateTimeField()
-    montant_total = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
-    )
-    statut = models.CharField(max_length=30)
+    numero_facture = models.CharField("n° de facture", unique=True, max_length=50)
+    vente = models.OneToOneField('Ventes', models.DO_NOTHING, related_name="facture")
+    date_facture = models.DateTimeField("date")
+    montant_total = models.DecimalField("montant (FCFA)", max_digits=15, decimal_places=2)
+    statut = models.CharField(max_length=30, choices=StatutFacture.choices, default=StatutFacture.EMISE)
     fichier_pdf = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         managed = False
         db_table = 'factures'
+        verbose_name = "facture"
+        verbose_name_plural = "factures"
+
+    def __str__(self):
+        return self.numero_facture
 
 
 class Fournisseurs(models.Model):
@@ -437,42 +449,33 @@ class LignesTransfert(models.Model):
 
 
 class LignesVente(models.Model):
+    """Une ligne = N balles entières d'un même lot."""
     id = models.BigAutoField(primary_key=True)
-
-    vente = models.ForeignKey(
-        'Ventes',
-        models.DO_NOTHING
-    )
-
+    vente = models.ForeignKey('Ventes', models.DO_NOTHING, related_name="lignes")
+    lot = models.ForeignKey("Lots", models.DO_NOTHING, blank=True, null=True, related_name="lignes_vente")
     categorie_produit = models.ForeignKey(
-        CategoriesProduits,
-        models.DO_NOTHING
+        CategoriesProduits, models.DO_NOTHING, blank=True, null=True, verbose_name="sous-catégorie"
     )
-
-    designation = models.CharField(max_length=200)
-    unite_vente = models.CharField(max_length=10)
-    quantite = models.DecimalField(
-        max_digits=12,
-        decimal_places=3
-    )
-    prix_unitaire = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
-    )
+    designation = models.CharField("désignation", max_length=200)
+    unite_vente = models.CharField(max_length=10, default="BALLE")
+    quantite = models.DecimalField("balles", max_digits=12, decimal_places=3)
+    prix_unitaire = models.DecimalField("prix par balle", max_digits=15, decimal_places=2)
+    prix_conseille = models.DecimalField("prix conseillé", max_digits=15, decimal_places=2, blank=True, null=True)
     remise = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
+        max_digits=15, decimal_places=2, default=0, help_text="Écart total sous le prix conseillé (négociation)."
     )
-    montant_ligne = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        blank=True,
-        null=True
-    )
+    montant_ligne = models.DecimalField("montant", max_digits=15, decimal_places=2, blank=True, null=True)
 
     class Meta:
         managed = False
         db_table = 'lignes_vente'
+        ordering = ("id",)
+        verbose_name = "ligne de vente"
+        verbose_name_plural = "lignes de vente"
+
+    @property
+    def nombre_balles(self):
+        return int(self.quantite)
 
 
 def _normaliser(texte):
@@ -522,6 +525,11 @@ class ReferencesFournisseurs(models.Model):
         CategoriesProduits, models.DO_NOTHING, blank=True, null=True, verbose_name="sous-catégorie"
     )
     qualite = models.ForeignKey(Qualites, models.DO_NOTHING, blank=True, null=True, verbose_name="qualité")
+    prix_vente_balle = models.DecimalField(
+        "prix de vente conseillé par balle (FCFA)", max_digits=15, decimal_places=2, blank=True, null=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Proposé au vendeur pour toutes les balles de cette référence (il peut le négocier).",
+    )
     actif = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -635,6 +643,12 @@ class Lots(models.Model):
         validators=[MinValueValidator(Decimal("0"))],
     )
 
+    prix_vente_balle = models.DecimalField(
+        "prix de vente conseillé par balle (FCFA)", max_digits=15, decimal_places=2, blank=True, null=True,
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="Laisser vide pour reprendre le prix de la référence fournisseur.",
+    )
+
     date_creation = models.DateField("date de création", default=timezone.localdate)
     date_reception = models.DateField(
         "date de réception",
@@ -716,42 +730,44 @@ class Lots(models.Model):
         return self.nombre_balles - self.nombre_balles_recues
 
     @property
+    def prix_conseille(self):
+        """Prix de vente proposé par balle : celui du lot, sinon celui de sa référence fournisseur."""
+        if self.prix_vente_balle is not None:
+            return self.prix_vente_balle
+        if self.reference_fournisseur_id:
+            return self.reference_fournisseur.prix_vente_balle
+        return None
+
+    @property
     def qr_actif(self):
         """Le QR code actuellement valable pour ce lot (ou None)."""
         return self.qr_codes.filter(actif=True).first()
 
 
+class StatutMoratoire(models.TextChoices):
+    EN_COURS = "EN_COURS", "En cours"
+    SOLDE = "SOLDE", "Soldé"
+    ANNULE = "ANNULE", "Annulé"
+
+
 class Moratoires(models.Model):
+    """Paiement échelonné du reste d'une vente."""
     id = models.BigAutoField(primary_key=True)
-
-    vente = models.ForeignKey(
-        'Ventes',
-        models.DO_NOTHING
-    )
-
-    date_debut = models.DateField()
-    date_echeance = models.DateField()
-
-    montant_concerne = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
-    )
-
-    type_moratoire = models.CharField(max_length=20)
+    vente = models.ForeignKey('Ventes', models.DO_NOTHING, related_name="moratoires")
+    date_debut = models.DateField("début")
+    date_echeance = models.DateField("dernière échéance")
+    montant_concerne = models.DecimalField("montant échelonné", max_digits=15, decimal_places=2)
+    type_moratoire = models.CharField(max_length=20, default="ECHEANCIER")
     motif = models.TextField(blank=True, null=True)
-    statut = models.CharField(max_length=20)
-
-    autorise_par = models.ForeignKey(
-        'User',
-        models.DO_NOTHING,
-        db_column='autorise_par'
-    )
-
-    created_at = models.DateTimeField()
+    statut = models.CharField(max_length=20, choices=StatutMoratoire.choices, default=StatutMoratoire.EN_COURS)
+    autorise_par = models.ForeignKey('User', models.DO_NOTHING, db_column='autorise_par', verbose_name="accordé par")
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         managed = False
         db_table = 'moratoires'
+        verbose_name = "moratoire"
+        verbose_name_plural = "moratoires"
 
 
 class MouvementsStock(models.Model):
@@ -841,43 +857,38 @@ class OuverturesLots(models.Model):
         db_table = 'ouvertures_lots'
 
 
+class ModePaiement(models.TextChoices):
+    ESPECES = "ESPECES", "Espèces"
+    WAVE = "WAVE", "Wave"
+    ORANGE_MONEY = "ORANGE_MONEY", "Orange Money"
+    VIREMENT = "VIREMENT", "Virement"
+    CHEQUE = "CHEQUE", "Chèque"
+
+
+class StatutPaiement(models.TextChoices):
+    VALIDE = "VALIDE", "Validé"
+    ANNULE = "ANNULE", "Annulé"
+
+
 class Paiements(models.Model):
     id = models.BigAutoField(primary_key=True)
-
-    vente = models.ForeignKey(
-        'Ventes',
-        models.DO_NOTHING
-    )
-
-    montant = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
-    )
-
-    date_paiement = models.DateTimeField()
-    mode_paiement = models.CharField(max_length=30)
-
+    vente = models.ForeignKey('Ventes', models.DO_NOTHING, related_name="paiements")
+    montant = models.DecimalField("montant (FCFA)", max_digits=15, decimal_places=2)
+    date_paiement = models.DateTimeField("date")
+    mode_paiement = models.CharField("moyen", max_length=30, choices=ModePaiement.choices)
     reference = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True
+        "référence", max_length=100, blank=True, null=True, help_text="N° de transaction Wave / Orange Money, n° de chèque…"
     )
-
-    utilisateur = models.ForeignKey(
-        'User',
-        models.DO_NOTHING
-    )
-
-    statut = models.CharField(max_length=20)
-
-    commentaire = models.TextField(
-        blank=True,
-        null=True
-    )
+    utilisateur = models.ForeignKey('User', models.DO_NOTHING, verbose_name="encaissé par")
+    statut = models.CharField(max_length=20, choices=StatutPaiement.choices, default=StatutPaiement.VALIDE)
+    commentaire = models.TextField(blank=True, null=True)
 
     class Meta:
         managed = False
         db_table = 'paiements'
+        ordering = ("date_paiement", "id")
+        verbose_name = "paiement"
+        verbose_name_plural = "paiements"
 
 
 class QrCodes(models.Model):
@@ -1008,51 +1019,34 @@ class UserDepots(models.Model):
         verbose_name_plural = "historique des affectations aux dépôts"
 
 
+class StatutVente(models.TextChoices):
+    BROUILLON = "BROUILLON", "En cours de saisie"
+    VALIDEE = "VALIDEE", "Validée"
+    ANNULEE = "ANNULEE", "Annulée"
+
+
 class Ventes(models.Model):
     id = models.BigAutoField(primary_key=True)
-
-    numero_vente = models.CharField(
-        unique=True,
-        max_length=50
-    )
-
-    client = models.ForeignKey(
-        Clients,
-        models.DO_NOTHING,
-        blank=True,
-        null=True
-    )
-
-    depot = models.ForeignKey(
-        Depots,
-        models.DO_NOTHING
-    )
-
-    vendeur = models.ForeignKey(
-        'User',
-        models.DO_NOTHING
-    )
-
-    date_vente = models.DateTimeField()
-
-    montant_total = models.DecimalField(
-        max_digits=15,
-        decimal_places=2
-    )
-
-    statut = models.CharField(max_length=20)
-
-    notes = models.TextField(
-        blank=True,
-        null=True
-    )
-
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    numero_vente = models.CharField("n° de vente", unique=True, max_length=50)
+    client = models.ForeignKey(Clients, models.DO_NOTHING, blank=True, null=True, related_name="ventes")
+    depot = models.ForeignKey(Depots, models.DO_NOTHING, verbose_name="dépôt")
+    vendeur = models.ForeignKey('User', models.DO_NOTHING, related_name="ventes")
+    date_vente = models.DateTimeField("date")
+    montant_total = models.DecimalField("total (FCFA)", max_digits=15, decimal_places=2, default=0)
+    statut = models.CharField(max_length=20, choices=StatutVente.choices, default=StatutVente.BROUILLON)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         managed = False
         db_table = 'ventes'
+        verbose_name = "vente"
+        verbose_name_plural = "ventes"
+
+    def __str__(self):
+        return self.numero_vente if self.statut != StatutVente.BROUILLON else f"Vente en cours de {self.vendeur}"
+
 
 # ============================================================
 # HISTORIQUE DES SCANS

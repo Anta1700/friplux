@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from .models import CategoriesLots, Conteneurs, Depots, Lots, ResultatScan, ScansLots, StatutLogistique, User
+from .ventes import balles_disponibles, balles_vendues
 from .scans import EffetScan, compteurs_par_categorie, derniere_reception, enregistrer_scan, filtrer_scans
 
 
@@ -76,6 +77,8 @@ def fiche_balle(request, code_lot):
         "qr_actif": lot.qr_codes.filter(actif=True).first(),
         "reception": derniere_reception(lot),
         "scannees": lot.nombre_balles_recues or 0,
+        "vendues": balles_vendues(lot),
+        "disponibles": balles_disponibles(lot),
         "voir_prix": request.user.is_staff,
         "StatutLogistique": StatutLogistique,
     }

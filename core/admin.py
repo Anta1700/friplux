@@ -38,6 +38,8 @@ from .models import (
     ScansLots,
 )
 from .admin_import import vue_apercu, vue_import
+from .montants import format_fcfa
+from .ventes import ErreurVente, annuler_vente, reste_a_payer
 from .depots import synchroniser_affectation
 from .services import (
     creer_qr_code,
@@ -430,6 +432,7 @@ class LotsAdmin(admin.ModelAdmin):
         ("Identification", {"fields": ("code_lot", "conteneur", "reference_fournisseur")}),
         ("Classement", {"fields": ("categorie_lot", "categorie_produit", "qualite")}),
         ("Informations fournisseur", {"fields": ("nombre_balles", "poids_kg", "prix_achat", "date_creation")}),
+        ("Vente", {"fields": ("prix_vente_balle",)}),
         ("Suivi", {"fields": ("statut_logistique", "date_reception", "nombre_balles_recues", "statut_ouverture", "date_ouverture", "notes")}),
         ("QR code", {"fields": ("etiquette_qr",)}),
         ("Dates techniques", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
@@ -704,160 +707,135 @@ class LignesTransfertAdmin(admin.ModelAdmin):
 
 
 # ============================================================
-# VENTES
+# VENTES (saisies depuis le téléphone ; ici : consultation et annulation)
+# Les montants, numéros et échéances sont calculés par l'application :
+# pas de modification à la main, pour que facture, paiements et stock restent cohérents.
 # ============================================================
+
+class LectureSeuleMixin:
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class LignesVenteInline(LectureSeuleMixin, admin.TabularInline):
+    model = LignesVente
+    extra = 0
+    fields = ("lot", "designation", "quantite", "prix_unitaire", "prix_conseille", "remise", "montant_ligne")
+    readonly_fields = fields
+
+
+class PaiementsInline(LectureSeuleMixin, admin.TabularInline):
+    model = Paiements
+    extra = 0
+    fields = ("date_paiement", "montant", "mode_paiement", "reference", "utilisateur", "statut")
+    readonly_fields = fields
+
 
 @admin.register(Ventes)
 class VentesAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "numero_vente",
-        "client",
-        "depot",
-        "vendeur",
-        "date_vente",
-        "montant_total",
-        "statut",
-    )
+    list_display = ("numero_vente", "date_vente", "client", "depot", "vendeur", "total_fcfa", "reste_fcfa", "statut")
+    list_filter = ("statut", "depot", "vendeur", ("date_vente", admin.DateFieldListFilter))
+    search_fields = ("numero_vente", "facture__numero_facture", "client__nom", "client__telephone", "lignes__lot__code_lot")
+    list_select_related = ("client", "depot", "vendeur")
+    date_hierarchy = "date_vente"
+    readonly_fields = ("numero_vente", "facture_lien", "date_vente", "client", "depot", "vendeur", "total_fcfa",
+                       "reste_fcfa", "statut", "notes")
+    fields = readonly_fields
+    inlines = (LignesVenteInline, PaiementsInline)
+    actions = ("annuler",)
+    list_per_page = 100
 
-    list_filter = (
-        "statut",
-        "depot",
-        "date_vente",
-    )
+    def get_queryset(self, request):
+        return super().get_queryset(request).exclude(statut="BROUILLON")
 
-    search_fields = (
-        "numero_vente",
-        "client__nom",
-        "vendeur__username",
-    )
+    def has_add_permission(self, request):
+        return False
 
+    def has_delete_permission(self, request, obj=None):
+        return False
 
-@admin.register(LignesVente)
-class LignesVenteAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "vente",
-        "categorie_produit",
-        "designation",
-        "unite_vente",
-        "quantite",
-        "prix_unitaire",
-        "remise",
-        "montant_ligne",
-    )
+    @admin.display(description="Total", ordering="montant_total")
+    def total_fcfa(self, obj):
+        return f"{format_fcfa(obj.montant_total)} FCFA"
 
-    list_filter = (
-        "unite_vente",
-        "categorie_produit",
-    )
+    @admin.display(description="Reste à payer")
+    def reste_fcfa(self, obj):
+        reste = reste_a_payer(obj)
+        return f"{format_fcfa(reste)} FCFA" if reste else "—"
 
-    search_fields = (
-        "designation",
-        "vente__numero_vente",
-    )
+    @admin.display(description="Facture")
+    def facture_lien(self, obj):
+        if not obj.pk or obj.statut == "BROUILLON":
+            return "—"
+        facture = getattr(obj, "facture", None)
+        return format_html('<a href="{}" target="_blank">{} – voir / imprimer</a>',
+                           reverse("core:vente_detail", args=[obj.pk]), facture.numero_facture if facture else "Facture")
+
+    @admin.action(description="Annuler les ventes sélectionnées (balles remises en stock, paiements remboursés)")
+    def annuler(self, request, queryset):
+        faites = 0
+        for vente in queryset:
+            try:
+                annuler_vente(request.user, vente, motif="annulée depuis l'administration")
+                faites += 1
+            except ErreurVente as erreur:
+                self.message_user(request, str(erreur), messages.WARNING)
+        if faites:
+            self.message_user(request, f"{faites} vente(s) annulée(s) : les balles sont de nouveau disponibles.", messages.SUCCESS)
 
 
 @admin.register(Paiements)
-class PaiementsAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "vente",
-        "montant",
-        "date_paiement",
-        "mode_paiement",
-        "statut",
-        "utilisateur",
-    )
+class PaiementsAdmin(LectureSeuleMixin, admin.ModelAdmin):
+    list_display = ("date_paiement", "vente", "montant", "mode_paiement", "reference", "utilisateur", "statut")
+    list_filter = ("mode_paiement", "statut", ("date_paiement", admin.DateFieldListFilter), "vente__depot")
+    search_fields = ("vente__numero_vente", "reference", "vente__client__nom")
+    list_select_related = ("vente", "utilisateur")
+    date_hierarchy = "date_paiement"
 
-    list_filter = (
-        "mode_paiement",
-        "statut",
-        "date_paiement",
-    )
-
-    search_fields = (
-        "vente__numero_vente",
-        "reference",
-        "utilisateur__username",
-    )
-
-
-# ============================================================
-# FACTURATION / MORATOIRES
-# ============================================================
 
 @admin.register(Factures)
-class FacturesAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "numero_facture",
-        "vente",
-        "date_facture",
-        "montant_total",
-        "statut",
-    )
+class FacturesAdmin(LectureSeuleMixin, admin.ModelAdmin):
+    list_display = ("numero_facture", "date_facture", "vente", "montant_total", "statut", "voir")
+    list_filter = ("statut", ("date_facture", admin.DateFieldListFilter))
+    search_fields = ("numero_facture", "vente__numero_vente", "vente__client__nom")
+    list_select_related = ("vente",)
 
-    list_filter = (
-        "statut",
-        "date_facture",
-    )
+    @admin.display(description="Facture")
+    def voir(self, obj):
+        return format_html('<a href="{}" target="_blank">Voir / imprimer</a>', reverse("core:vente_detail", args=[obj.vente_id]))
 
-    search_fields = (
-        "numero_facture",
-        "vente__numero_vente",
-    )
+
+class EcheancesInline(LectureSeuleMixin, admin.TabularInline):
+    model = EcheancesMoratoire
+    extra = 0
+    fields = ("numero_echeance", "date_echeance", "montant_prevu", "statut")
+    readonly_fields = fields
 
 
 @admin.register(Moratoires)
-class MoratoiresAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "vente",
-        "date_debut",
-        "date_echeance",
-        "montant_concerne",
-        "type_moratoire",
-        "statut",
-        "autorise_par",
-    )
+class MoratoiresAdmin(LectureSeuleMixin, admin.ModelAdmin):
+    list_display = ("vente", "client", "montant_concerne", "date_debut", "date_echeance", "statut", "autorise_par")
+    list_filter = ("statut",)
+    search_fields = ("vente__numero_vente", "vente__client__nom", "vente__client__telephone")
+    list_select_related = ("vente__client", "autorise_par")
+    inlines = (EcheancesInline,)
 
-    list_filter = (
-        "type_moratoire",
-        "statut",
-    )
-
-    search_fields = (
-        "vente__numero_vente",
-        "autorise_par__username",
-    )
+    @admin.display(description="Client")
+    def client(self, obj):
+        return obj.vente.client or "—"
 
 
 @admin.register(EcheancesMoratoire)
-class EcheancesMoratoireAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "moratoire",
-        "numero_echeance",
-        "date_echeance",
-        "montant_prevu",
-        "statut",
-    )
-
-    list_filter = (
-        "statut",
-        "date_echeance",
-    )
-
-
-@admin.register(AffectationsPaiements)
-class AffectationsPaiementsAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "paiement",
-        "echeance",
-        "montant_affecte",
-    )
+class EcheancesMoratoireAdmin(LectureSeuleMixin, admin.ModelAdmin):
+    list_display = ("date_echeance", "moratoire", "numero_echeance", "montant_prevu", "statut")
+    list_filter = ("statut", ("date_echeance", admin.DateFieldListFilter))
+    search_fields = ("moratoire__vente__numero_vente", "moratoire__vente__client__nom")
 
 
 # ============================================================
@@ -944,8 +922,8 @@ class ReferencesFournisseursAdmin(admin.ModelAdmin):
     Catalogue des codes articles fournisseurs et de leur classement.
     Modifier un classement ici s'applique aux prochains imports (pas aux balles déjà créées).
     """
-    list_display = ("code", "libelle", "fournisseur", "categorie_lot", "categorie_produit", "qualite", "actif")
-    list_editable = ("categorie_lot", "categorie_produit", "qualite")
+    list_display = ("code", "libelle", "fournisseur", "categorie_lot", "categorie_produit", "qualite", "prix_vente_balle", "actif")
+    list_editable = ("categorie_lot", "categorie_produit", "qualite", "prix_vente_balle")
     list_filter = ("fournisseur", "categorie_lot", "qualite", "actif")
     search_fields = ("code", "libelle")
     list_select_related = ("fournisseur", "categorie_lot", "categorie_produit__parent", "qualite")
