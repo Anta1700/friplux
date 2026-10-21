@@ -1,4 +1,6 @@
 """Pages de vente (téléphone) : vente en cours, ajout de balles par scan, validation, facture, encaissement."""
+from datetime import timedelta
+
 from django import forms
 from django.conf import settings
 from django.contrib import messages
@@ -11,9 +13,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .models import (
-    Clients, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
+    Clients, Depots, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
 )
 from .montants import entier_fcfa
+from .stats_ventes import statistiques_ventes as calculer_statistiques_ventes
 from .scans import identifier
 from .ventes import (
     ErreurVente, MAX_ECHEANCES, abandonner_vente, ajouter_au_panier, ajouter_mois, balles_disponibles,
@@ -291,3 +294,52 @@ def vente_encaisser(request, pk):
 
     contexte.update({"formulaire": formulaire, "prochaine": prochaine})
     return render(request, "core/vente_encaisser.html", contexte)
+
+
+# ------------------------------------------------------------------
+# Statistiques des ventes
+# ------------------------------------------------------------------
+
+class FiltresVentes(forms.Form):
+    date_debut = forms.DateField(label="Du", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    date_fin = forms.DateField(label="Au", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    depot = forms.ModelChoiceField(Depots.objects.order_by("nom"), required=False, label="Dépôt", empty_label="Tous")
+    vendeur = forms.ModelChoiceField(User.objects.none(), required=False, label="Vendeur", empty_label="Tous")
+
+    def __init__(self, utilisateur, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        personnes = User.objects.filter(is_active=True).order_by("first_name", "last_name")
+        if not utilisateur.is_staff:
+            # Responsables et vendeurs : seulement leur dépôt.
+            del self.fields["depot"]
+            personnes = personnes.filter(depot_id=utilisateur.depot_id) if utilisateur.depot_id else personnes.filter(pk=utilisateur.pk)
+        self.fields["vendeur"].queryset = personnes
+        self.fields["vendeur"].label_from_instance = lambda u: u.get_full_name()
+
+
+@login_required
+def statistiques_ventes(request):
+    aujourd_hui = timezone.localdate()
+    donnees = request.GET.copy()
+    if not donnees:
+        donnees.update({"date_debut": aujourd_hui.isoformat(), "date_fin": aujourd_hui.isoformat()})
+    filtres = FiltresVentes(request.user, donnees)
+    criteres = filtres.cleaned_data if filtres.is_valid() else {}
+    stats = calculer_statistiques_ventes(
+        ventes_visibles(request.user),
+        date_debut=criteres.get("date_debut"), date_fin=criteres.get("date_fin"),
+        depot=criteres.get("depot"), vendeur=criteres.get("vendeur"),
+    )
+    debut_mois = aujourd_hui.replace(day=1)
+    raccourcis = [
+        ("Aujourd'hui", aujourd_hui, aujourd_hui),
+        ("7 derniers jours", aujourd_hui - timedelta(days=6), aujourd_hui),
+        ("Ce mois", debut_mois, aujourd_hui),
+        ("Mois dernier", (debut_mois - timedelta(days=1)).replace(day=1), debut_mois - timedelta(days=1)),
+    ]
+    return render(request, "core/statistiques_ventes.html", {
+        "filtres": filtres, "stats": stats, "voir_rabais": request.user.is_staff,
+        "raccourcis": [{"nom": n, "debut": d.isoformat(), "fin": f.isoformat(),
+                        "actif": criteres.get("date_debut") == d and criteres.get("date_fin") == f} for n, d, f in raccourcis],
+        "tous_depots": request.user.is_staff and not criteres.get("depot"),
+    })

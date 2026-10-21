@@ -1,0 +1,164 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Statistiques des ventes{% endblock %}
+{% block menu_stats %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .filtres { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .filtres > div { min-width: 0; }
+  .filtres input, .filtres select { max-width: 100%; min-width: 0; }
+  .filtres .large { grid-column: 1 / -1; }
+  .filtres .bouton { margin: 4px 0 0; }
+  .raccourcis { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .raccourcis a { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--marque); color: var(--marque); text-decoration: none; font-size: .9rem; font-weight: 600; }
+  .raccourcis a.actif { background: var(--marque); color: #fff; }
+  .chiffres { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .chiffres div { background: var(--marque); color: #fff; border-radius: var(--rayon); padding: 12px 14px; min-width: 0; }
+  .chiffres div.attention { background: var(--alerte-fond); color: var(--alerte); }
+  .chiffres strong { display: block; font-size: 1.45rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .chiffres span { font-size: .85rem; opacity: .9; }
+  .depot { border: 1px solid var(--ligne); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .depot .titre { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .depot .titre b { font-size: 1.05rem; }
+  .depot dl { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; margin: 0; }
+  .depot dt { color: var(--doux); font-size: .78rem; text-transform: uppercase; letter-spacing: .02em; }
+  .depot dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .depot dd.rouge { color: var(--erreur); }
+  .defile { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; }
+  .defile table { min-width: 460px; }
+  td.nombre, th.nombre { white-space: nowrap; }
+  tfoot td { font-weight: 700; border-bottom: 0; }
+  .note { margin: 8px 0 0; }
+  .retard a { color: var(--marque); font-weight: 600; text-decoration: none; }
+  .jours { color: var(--erreur); font-weight: 700; white-space: nowrap; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+{% include "core/onglets_stats.html" with onglet="ventes" %}
+<h1>Statistiques des ventes</h1>
+
+<div class="raccourcis">
+  {% for r in raccourcis %}
+    <a href="?date_debut={{ r.debut }}&date_fin={{ r.fin }}{% if filtres.cleaned_data.depot %}&depot={{ filtres.cleaned_data.depot.pk }}{% endif %}" class="{% if r.actif %}actif{% endif %}">{{ r.nom }}</a>
+  {% endfor %}
+</div>
+
+<form method="get" class="carte">
+  <div class="filtres">
+    <div>{{ filtres.date_debut.label_tag }}{{ filtres.date_debut }}</div>
+    <div>{{ filtres.date_fin.label_tag }}{{ filtres.date_fin }}</div>
+    {% if filtres.depot %}<div>{{ filtres.depot.label_tag }}{{ filtres.depot }}</div>{% endif %}
+    <div class="{% if not filtres.depot %}large{% endif %}">{{ filtres.vendeur.label_tag }}{{ filtres.vendeur }}</div>
+    <div class="large"><button type="submit" class="bouton">Afficher</button></div>
+  </div>
+</form>
+
+{% with t=stats.totaux %}
+<div class="chiffres">
+  <div><strong>{{ t.ventes }}</strong><span>vente{{ t.ventes|pluralize }} · {{ t.balles }} balle{{ t.balles|pluralize }}</span></div>
+  <div><strong>{{ t.vendu|fcfa_nombre }}</strong><span>FCFA vendus</span></div>
+  <div><strong>{{ t.encaisse|fcfa_nombre }}</strong><span>FCFA encaissés</span></div>
+  <div class="{% if t.reste %}attention{% endif %}"><strong>{{ t.reste|fcfa_nombre }}</strong><span>FCFA restant à encaisser</span></div>
+</div>
+{% endwith %}
+
+<div class="carte">
+  <h2>Par dépôt</h2>
+  {% for d in stats.depots %}
+    <div class="depot">
+      <div class="titre"><b>{{ d.nom }}</b><span class="discret">{{ d.ventes }} vente{{ d.ventes|pluralize }}</span></div>
+      <dl>
+        <div><dt>Balles</dt><dd>{{ d.balles }}</dd></div>
+        <div><dt>Vendu</dt><dd>{{ d.vendu|fcfa_nombre }}</dd></div>
+        <div><dt>Encaissé</dt><dd>{{ d.encaisse|fcfa_nombre }}</dd></div>
+        <div><dt>Reste</dt><dd class="{% if d.reste %}rouge{% endif %}">{{ d.reste|fcfa_nombre }}</dd></div>
+        {% if voir_rabais %}<div><dt>Rabais</dt><dd>{{ d.rabais|fcfa_nombre }}</dd></div>{% endif %}
+      </dl>
+    </div>
+  {% empty %}
+    <p class="discret" style="margin:0">Aucune vente ni encaissement sur cette période.</p>
+  {% endfor %}
+  <p class="discret note">Montants en FCFA.
+    <b>Vendu</b> : total des ventes de la période, payées ou non.
+    <b>Encaissé</b> : argent reçu pendant la période (y compris des échéances de ventes plus anciennes).
+    <b>Reste</b> : ce qui reste à payer, à ce jour, sur les ventes de la période.
+    {% if voir_rabais %}<b>Rabais</b> : réduction accordée sous le prix conseillé (visible seulement par l'administration).{% endif %}</p>
+</div>
+
+<div class="carte">
+  <h2>Par vendeur</h2>
+  {% if stats.vendeurs %}
+  <div class="defile"><table>
+    <thead><tr><th>Vendeur</th><th class="nombre">Ventes</th><th class="nombre">Balles</th><th class="nombre">Vendu</th><th class="nombre">Encaissé</th>{% if voir_rabais %}<th class="nombre">Rabais</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for v in stats.vendeurs %}
+        <tr><td>{{ v.nom }}</td><td class="nombre">{{ v.ventes }}</td><td class="nombre">{{ v.balles }}</td>
+            <td class="nombre">{{ v.vendu|fcfa_nombre }}</td><td class="nombre">{{ v.encaisse|fcfa_nombre }}</td>
+            {% if voir_rabais %}<td class="nombre">{{ v.rabais|fcfa_nombre }}</td>{% endif %}</tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="discret note">« Encaissé » : argent reçu par cette personne (elle peut encaisser l'échéance d'une vente d'un collègue).</p>
+  {% else %}<p class="discret" style="margin:0">Aucune vente sur cette période.</p>{% endif %}
+</div>
+
+<div class="carte">
+  <h2>Encaissé par moyen de paiement</h2>
+  <table>
+    <thead><tr><th>Moyen</th><th class="nombre">Paiements</th><th class="nombre">Montant</th></tr></thead>
+    <tbody>
+      {% for m in stats.modes %}
+        <tr><td>{{ m.nom }}</td><td class="nombre">{{ m.nombre }}</td><td class="nombre">{{ m.montant|fcfa_nombre }}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td></td><td class="nombre">{{ stats.totaux.encaisse|fcfa }}</td></tr></tfoot>
+  </table>
+  <p class="discret note">À comparer avec la caisse et les relevés Wave / Orange Money.</p>
+</div>
+
+<div class="carte">
+  <h2>Ce qui se vend</h2>
+  {% if stats.categories %}
+  <div class="defile"><table>
+    <thead><tr><th>Catégorie</th><th>Qualité</th><th class="nombre">Balles</th><th class="nombre">Montant</th><th class="nombre">Prix moyen / balle</th></tr></thead>
+    <tbody>
+      {% for c in stats.categories %}
+        <tr><td>{{ c.categorie }}</td><td>{{ c.qualite }}</td><td class="nombre">{{ c.balles }}</td>
+            <td class="nombre">{{ c.montant|fcfa_nombre }}</td><td class="nombre">{{ c.prix_moyen|fcfa_nombre }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="discret" style="margin:0">Aucune balle vendue sur cette période.</p>{% endif %}
+</div>
+
+<div class="carte retard">
+  <h2>Échéances en retard</h2>
+  <p class="discret" style="margin-top:-4px">À ce jour, quelle que soit la période choisie.</p>
+  {% if stats.retards.liste %}
+    {% if stats.retards.par_depot|length > 1 or tous_depots %}
+    <table style="margin-bottom:12px">
+      <thead><tr><th>Dépôt</th><th class="nombre">Échéances</th><th class="nombre">Montant dû</th></tr></thead>
+      <tbody>{% for d in stats.retards.par_depot %}<tr><td>{{ d.nom }}</td><td class="nombre">{{ d.nombre }}</td><td class="nombre">{{ d.montant|fcfa_nombre }}</td></tr>{% endfor %}</tbody>
+      <tfoot><tr><td>Total</td><td></td><td class="nombre">{{ stats.retards.total|fcfa }}</td></tr></tfoot>
+    </table>
+    {% endif %}
+    <table>
+      <thead><tr><th>Client</th><th class="nombre">Dû</th></tr></thead>
+      <tbody>
+        {% for r in stats.retards.liste %}
+          <tr>
+            <td><a href="{% url 'core:vente_detail' r.vente.pk %}">{{ r.vente.client.nom|default:"Client" }}</a>
+              {% if r.vente.client.telephone %}<br><a href="tel:{{ r.vente.client.telephone }}" class="discret">📞 {{ r.vente.client.telephone }}</a>{% endif %}
+              <br><span class="discret">{{ r.vente.depot.nom }} · échéance n° {{ r.echeance.numero_echeance }} du {{ r.echeance.date_echeance|date:"d/m/Y" }}</span></td>
+            <td class="nombre"><b>{{ r.du|fcfa_nombre }}</b><br><span class="jours">{{ r.jours }} jour{{ r.jours|pluralize }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="margin:0">✓ Aucune échéance en retard.</p>
+  {% endif %}
+</div>
+{% endblock %}

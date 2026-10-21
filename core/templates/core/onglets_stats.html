@@ -1,0 +1,4 @@
+<nav class="onglets-stats">
+  <a href="{% url 'core:statistiques' %}" class="{% if onglet == 'reception' %}actif{% endif %}">Réception</a>
+  <a href="{% url 'core:statistiques_ventes' %}" class="{% if onglet == 'ventes' %}actif{% endif %}">Ventes</a>
+</nav>

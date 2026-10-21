@@ -79,6 +79,9 @@
     .erreur-champ { color: var(--erreur); font-size: .88rem; margin-top: 4px; }
     .lien-discret { background: none; border: 0; padding: 0; font: inherit; color: var(--erreur); text-decoration: underline; cursor: pointer; }
     .cache { display: none !important; }
+    .onglets-stats { display: flex; gap: 4px; background: #e8e3d8; border-radius: 12px; padding: 4px; margin-bottom: 4px; }
+    .onglets-stats a { flex: 1; text-align: center; padding: 10px; border-radius: 9px; text-decoration: none; color: var(--doux); font-weight: 650; }
+    .onglets-stats a.actif { background: #fff; color: var(--marque); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
     @media (min-width: 640px) { main { padding-top: 24px; } }
     @media print {
       header.bandeau, .sans-impression, .message { display: none !important; }

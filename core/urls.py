@@ -24,6 +24,7 @@ urlpatterns = [
     path("ventes/client/", views_vente.client_par_telephone, name="client_par_telephone"),
     path("ventes/<int:pk>/", views_vente.vente_detail, name="vente_detail"),
     path("ventes/<int:pk>/encaisser/", views_vente.vente_encaisser, name="vente_encaisser"),
+    path("statistiques/ventes/", views_vente.statistiques_ventes, name="statistiques_ventes"),
     path("statistiques/", views_scan.statistiques, name="statistiques"),
     path("qr/<int:pk>.png", views.qr_code_png, name="qr_code_png"),
     path("etiquettes/conteneur/<int:conteneur_id>.pdf", views.etiquettes_conteneur, name="etiquettes_conteneur"),
