@@ -38,6 +38,7 @@ from .models import (
     ScansLots,
 )
 from .admin_import import vue_apercu, vue_import
+from .comptes import donner_mot_de_passe_provisoire
 from .montants import format_fcfa
 from .ventes import ErreurVente, annuler_vente, reste_a_payer
 from .depots import synchroniser_affectation
@@ -60,6 +61,9 @@ class UserAdmin(DjangoUserAdmin):
     ordering = ("username",)
 
     def save_model(self, request, obj, form, change):
+        if not change:
+            # Le mot de passe saisi à la création est provisoire : l'employé choisira le sien.
+            obj.doit_changer_mot_de_passe = True
         super().save_model(request, obj, form, change)
         # L'historique des affectations (user_depots) suit automatiquement le champ « Dépôt ».
         if not change or "depot" in form.changed_data:
@@ -77,9 +81,36 @@ class UserAdmin(DjangoUserAdmin):
         "role",
         "depot",
         "is_active",
+        "mot_de_passe_choisi",
         "is_staff",
         "is_superuser",
     )
+    actions = ("donner_mot_de_passe_provisoire",)
+
+    @admin.display(description="Mot de passe choisi", boolean=True, ordering="doit_changer_mot_de_passe")
+    def mot_de_passe_choisi(self, obj):
+        return not obj.doit_changer_mot_de_passe
+
+    @admin.action(description="Donner un mot de passe provisoire (oubli du mot de passe)")
+    def donner_mot_de_passe_provisoire(self, request, queryset):
+        for utilisateur in queryset:
+            mot = donner_mot_de_passe_provisoire(utilisateur)
+            self.message_user(
+                request,
+                format_html(
+                    "{} : mot de passe provisoire <b style='font-size:1.2em;letter-spacing:.05em'>{}</b> "
+                    "— donnez-le à la personne ; elle choisira le sien à la connexion.",
+                    utilisateur.get_full_name(), mot,
+                ),
+                messages.SUCCESS,
+            )
+
+    def user_change_password(self, request, id, form_url=""):
+        # « Modifier le mot de passe » depuis l'admin = mot de passe provisoire.
+        reponse = super().user_change_password(request, id, form_url)
+        if request.method == "POST" and reponse.status_code == 302:
+            User.objects.filter(pk=id).update(doit_changer_mot_de_passe=True)
+        return reponse
 
     list_filter = (
         "is_active",
@@ -138,6 +169,7 @@ class UserAdmin(DjangoUserAdmin):
             {
                 "fields": (
                     "is_active",
+                    "doit_changer_mot_de_passe",
                     "is_staff",
                     "is_superuser",
                 )

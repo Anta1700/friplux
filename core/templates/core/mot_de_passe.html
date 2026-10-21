@@ -1,0 +1,67 @@
+{% extends "core/base.html" %}
+{% block titre %}Mon mot de passe{% endblock %}
+
+{% block entete %}
+<style>
+  .regles { margin: 0 0 14px; padding-left: 20px; color: var(--doux); }
+  .regles li { margin-bottom: 2px; }
+  .voir { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 4px 0 12px; }
+  .voir input { width: 20px; height: 20px; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>{% if provisoire %}Choisissez votre mot de passe{% else %}Changer mon mot de passe{% endif %}</h1>
+
+{% if provisoire %}
+  <div class="message info">
+    Bonjour {{ user.get_short_name }}. Le mot de passe que vous avez reçu est provisoire.
+    Choisissez maintenant <b>votre</b> mot de passe : vous seul le connaîtrez.
+  </div>
+{% endif %}
+
+<form method="post" class="carte">
+  {% csrf_token %}
+  {% for e in formulaire.non_field_errors %}<div class="message error">{{ e }}</div>{% endfor %}
+
+  {% if formulaire.old_password %}
+    <div class="champ">
+      <label for="id_old_password">Mot de passe actuel</label>
+      <input type="password" name="old_password" id="id_old_password" autocomplete="current-password" required>
+      {% for e in formulaire.old_password.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  <p style="margin:0 0 6px;font-weight:600">Votre nouveau mot de passe doit avoir :</p>
+  <ul class="regles">
+    <li>au moins 8 caractères ;</li>
+    <li>des lettres, pas seulement des chiffres ;</li>
+    <li>rien de trop simple (pas « 12345678 » ni « motdepasse »).</li>
+  </ul>
+
+  <div class="champ">
+    <label for="id_new_password1">Nouveau mot de passe</label>
+    <input type="password" name="new_password1" id="id_new_password1" autocomplete="new-password" required>
+    {% for e in formulaire.new_password1.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+  </div>
+  <div class="champ">
+    <label for="id_new_password2">Retapez le nouveau mot de passe</label>
+    <input type="password" name="new_password2" id="id_new_password2" autocomplete="new-password" required>
+    {% for e in formulaire.new_password2.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
+  </div>
+  <label class="voir"><input type="checkbox" id="voir"> Afficher ce que je tape</label>
+
+  <button type="submit" class="bouton succes">Enregistrer mon mot de passe</button>
+</form>
+{% if not provisoire %}<a class="bouton secondaire" href="{% url 'core:scanner' %}">Annuler</a>{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("voir").addEventListener("change", function (e) {
+  document.querySelectorAll("input[type=password], input[data-mdp]").forEach(function (c) {
+    c.setAttribute("data-mdp", "1"); c.type = e.target.checked ? "text" : "password";
+  });
+});
+</script>
+{% endblock %}

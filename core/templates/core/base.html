@@ -109,6 +109,12 @@
       <div class="message {{ message.tags }}">{{ message }}</div>
     {% endfor %}
     {% block contenu %}{% endblock %}
+    {% if user.is_authenticated and not user.doit_changer_mot_de_passe %}
+      <p class="discret sans-impression" style="text-align:center;margin-top:28px">
+        Connecté : {{ user.get_full_name }}{% if user.depot %} · {{ user.depot.nom }}{% endif %}<br>
+        <a href="{% url 'core:mot_de_passe' %}" style="color:var(--marque)">Changer mon mot de passe</a>
+      </p>
+    {% endif %}
   </main>
   {% block scripts %}{% endblock %}
 </body>

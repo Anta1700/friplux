@@ -137,6 +137,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         db_column="is_staff"
     )
 
+    # Vrai quand le mot de passe a été donné par l'administrateur :
+    # l'utilisateur doit choisir le sien à sa prochaine connexion.
+    doit_changer_mot_de_passe = models.BooleanField(
+        "doit choisir son mot de passe",
+        default=False,
+        help_text="Coché automatiquement quand vous créez le compte ou donnez un mot de passe provisoire.",
+    )
+
     created_at = models.DateTimeField(
         db_column="created_at"
     )
