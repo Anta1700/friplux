@@ -65,7 +65,7 @@ class Roles(models.Model):
     code = models.CharField(unique=True, max_length=30)
     nom = models.CharField(max_length=80)
     description = models.TextField(blank=True, null=True)
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
 
     class Meta:
         managed = False
@@ -227,7 +227,7 @@ class CategoriesLots(models.Model):
     code = models.CharField(unique=True, max_length=30)
     nom = models.CharField(unique=True, max_length=100)
     description = models.TextField(blank=True, null=True)
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
 
     class Meta:
         managed = False
@@ -248,7 +248,7 @@ class CategoriesProduits(models.Model):
         null=True
     )
 
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
 
     class Meta:
         managed = False
@@ -325,7 +325,7 @@ class Depots(models.Model):
         null=True
     )
 
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -395,7 +395,7 @@ class Fournisseurs(models.Model):
     telephone = models.CharField(max_length=30, blank=True, null=True)
     email = models.CharField(max_length=254, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -993,7 +993,7 @@ class UserDepots(models.Model):
         null=True
     )
 
-    actif = models.BooleanField()
+    actif = models.BooleanField(default=True)
 
     class Meta:
         managed = False
