@@ -13,6 +13,7 @@
   .dispo.zero { background: var(--erreur-fond); color: var(--erreur); }
   .compteur { display: flex; align-items: center; gap: 10px; }
   .compteur button { width: 56px; height: 56px; border-radius: 14px; border: 2px solid var(--marque); background: #fff; color: var(--marque); font-size: 1.8rem; font-weight: 700; cursor: pointer; flex: none; }
+  .compteur button:disabled { border-color: #d6d1c6; color: #c4beb2; background: #f6f4ef; cursor: not-allowed; }
   .compteur input { text-align: center; font-size: 1.6rem; font-weight: 800; padding: 8px; height: 56px; }
   .prix input { font-size: 1.4rem; font-weight: 700; }
   .total-ligne { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 0; border-top: 1px solid var(--ligne); }
@@ -50,6 +51,7 @@
              value="{{ formulaire.nombre.value|default:1 }}" required>
       <button type="button" data-pas="1" aria-label="Une balle de plus">+</button>
     </div>
+    <div class="discret" style="margin-top:4px">{% if disponibles == 1 %}Une seule balle de ce lot dans votre dépôt.{% else %}Maximum : {{ disponibles }} balles dans votre dépôt.{% endif %}</div>
     {% for e in formulaire.nombre.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
   </div>
 
@@ -79,9 +81,15 @@
   var max = parseInt(nombre.max, 10) || 1;
   function chiffres(v) { return parseInt(String(v).replace(/\D/g, ""), 10) || 0; }
   function format(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+  function etat() {
+    var v = parseInt(nombre.value, 10) || 0;
+    document.querySelector("[data-pas='-1']").disabled = v <= 1;
+    document.querySelector("[data-pas='1']").disabled = v >= max;
+  }
   function maj() {
     var n = chiffres(nombre.value), p = chiffres(prix.value);
     total.textContent = n && p ? format(n * p) + " FCFA" : "—";
+    etat();
   }
   document.querySelectorAll("[data-pas]").forEach(function (b) {
     b.addEventListener("click", function () {

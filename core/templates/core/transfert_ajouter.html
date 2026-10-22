@@ -13,6 +13,7 @@
   .dispo.zero { background: var(--erreur-fond); color: var(--erreur); }
   .compteur { display: flex; align-items: center; gap: 10px; }
   .compteur button { width: 56px; height: 56px; border-radius: 14px; border: 2px solid var(--marque); background: #fff; color: var(--marque); font-size: 1.8rem; font-weight: 700; cursor: pointer; flex: none; }
+  .compteur button:disabled { border-color: #d6d1c6; color: #c4beb2; background: #f6f4ef; cursor: not-allowed; }
   .compteur input { text-align: center; font-size: 1.6rem; font-weight: 800; padding: 8px; height: 56px; }
 </style>
 {% endblock %}
@@ -40,6 +41,7 @@
     <input type="number" name="nombre" id="id_nombre" min="1" max="{{ disponibles }}" inputmode="numeric" value="{{ nombre }}" required>
     <button type="button" data-pas="1" aria-label="Une balle de plus">+</button>
   </div>
+  <div class="discret" style="margin-top:4px">{% if disponibles == 1 %}Une seule balle de ce lot dans votre dépôt.{% else %}Maximum : {{ disponibles }} balles dans votre dépôt.{% endif %}</div>
   <button type="submit" class="bouton succes">{% if ligne %}Modifier dans l'envoi{% else %}Ajouter à l'envoi{% endif %}</button>
 </form>
 {% endif %}
@@ -51,11 +53,19 @@
 (function () {
   var n = document.getElementById("id_nombre"); if (!n) return;
   var max = parseInt(n.max, 10) || 1;
+  function etat() {
+    var v = parseInt(n.value, 10) || 0;
+    document.querySelector("[data-pas='-1']").disabled = v <= 1;
+    document.querySelector("[data-pas='1']").disabled = v >= max;
+  }
   document.querySelectorAll("[data-pas]").forEach(function (b) {
     b.addEventListener("click", function () {
       n.value = Math.max(1, Math.min(max, (parseInt(n.value, 10) || 0) + parseInt(b.dataset.pas, 10)));
+      etat();
     });
   });
+  n.addEventListener("input", etat);
+  etat();
 })();
 </script>
 {% endblock %}
