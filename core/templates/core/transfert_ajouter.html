@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Envoyer {{ lot.code_lot }}{% endblock %}
+{% block menu_stock %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .code { font-size: 1.2rem; font-weight: 750; word-break: break-all; }
+  .classement { font-size: 1.15rem; font-weight: 650; margin: 8px 0; }
+  .pastilles span { display: inline-block; padding: 5px 13px; border-radius: 999px; font-weight: 700; margin: 0 6px 6px 0; }
+  .qualite { background: #f3e6cf; color: #7a4e0f; }
+  .dispo { background: var(--ok-fond); color: var(--ok); }
+  .dispo.zero { background: var(--erreur-fond); color: var(--erreur); }
+  .compteur { display: flex; align-items: center; gap: 10px; }
+  .compteur button { width: 56px; height: 56px; border-radius: 14px; border: 2px solid var(--marque); background: #fff; color: var(--marque); font-size: 1.8rem; font-weight: 700; cursor: pointer; flex: none; }
+  .compteur input { text-align: center; font-size: 1.6rem; font-weight: 800; padding: 8px; height: 56px; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+  <div class="code">{{ lot.code_lot }}</div>
+  <div class="classement">{{ lot.categorie_lot }}{% if lot.categorie_produit %} › {{ lot.categorie_produit.nom }}{% endif %}</div>
+  <div class="pastilles">
+    {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% endif %}
+    <span class="dispo {% if not disponibles %}zero{% endif %}">{{ disponibles }} balle{{ disponibles|s }} dans votre dépôt</span>
+  </div>
+  <p class="discret" style="margin:4px 0 0">Envoi vers <b>{{ transfert.depot_arrivee.nom }}</b>{% if ligne %} · déjà {{ ligne.balles }} balle{{ ligne.balles|s }} dans l'envoi{% endif %}</p>
+</div>
+
+{% if not disponibles %}
+  <div class="message error">Aucune balle de ce lot dans votre dépôt. {{ ailleurs }}</div>
+  <a class="bouton secondaire" href="{% url 'core:transfert_scanner' %}">Scanner une autre balle</a>
+{% else %}
+<form method="post" class="carte">
+  {% csrf_token %}
+  <label for="id_nombre">Combien de balles envoyer ?</label>
+  <div class="compteur">
+    <button type="button" data-pas="-1" aria-label="Une balle de moins">−</button>
+    <input type="number" name="nombre" id="id_nombre" min="1" max="{{ disponibles }}" inputmode="numeric" value="{{ nombre }}" required>
+    <button type="button" data-pas="1" aria-label="Une balle de plus">+</button>
+  </div>
+  <button type="submit" class="bouton succes">{% if ligne %}Modifier dans l'envoi{% else %}Ajouter à l'envoi{% endif %}</button>
+</form>
+{% endif %}
+<a class="bouton secondaire" href="{% url 'core:transfert_envoi' %}">Retour à l'envoi</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var n = document.getElementById("id_nombre"); if (!n) return;
+  var max = parseInt(n.max, 10) || 1;
+  document.querySelectorAll("[data-pas]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      n.value = Math.max(1, Math.min(max, (parseInt(n.value, 10) || 0) + parseInt(b.dataset.pas, 10)));
+    });
+  });
+})();
+</script>
+{% endblock %}

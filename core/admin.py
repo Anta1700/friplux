@@ -40,6 +40,7 @@ from .models import (
 )
 from .admin_import import vue_apercu, vue_import
 from .comptes import donner_mot_de_passe_provisoire
+from .stock import progression
 from .montants import format_fcfa
 from .ventes import ErreurVente, annuler_vente, reste_a_payer
 from .depots import synchroniser_affectation
@@ -662,32 +663,23 @@ class StocksAdmin(admin.ModelAdmin):
 
 @admin.register(MouvementsStock)
 class MouvementsStockAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "type_mouvement",
-        "depot_depart",
-        "depot_arrivee",
-        "lot",
-        "categorie_produit",
-        "quantite_pieces",
-        "poids_kg",
-        "utilisateur",
-        "date_mouvement",
-        "statut",
-    )
+    """Réceptions de balles et transferts : lecture seule (le stock se calcule à partir de ces lignes)."""
+    list_display = ("date_mouvement", "type_mouvement", "lot", "balles", "balles_recues", "depot_depart", "depot_arrivee",
+                    "transfert", "utilisateur", "statut")
+    list_filter = ("type_mouvement", "statut", "depot_depart", "depot_arrivee", ("date_mouvement", admin.DateFieldListFilter))
+    search_fields = ("lot__code_lot", "reference_document", "transfert__reference_transfert")
+    list_select_related = ("lot", "depot_depart", "depot_arrivee", "transfert", "utilisateur")
+    date_hierarchy = "date_mouvement"
+    list_per_page = 100
 
-    list_filter = (
-        "type_mouvement",
-        "statut",
-        "depot_depart",
-        "depot_arrivee",
-    )
+    def has_add_permission(self, request):
+        return False
 
-    search_fields = (
-        "reference_document",
-        "lot__code_lot",
-        "utilisateur__username",
-    )
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(OuverturesLots)
@@ -731,28 +723,40 @@ class LignesOuvertureAdmin(admin.ModelAdmin):
 # TRANSFERTS
 # ============================================================
 
+class MouvementsTransfertInline(admin.TabularInline):
+    model = MouvementsStock
+    extra = 0
+    fields = ("lot", "balles", "balles_recues", "statut")
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(TransfertsStock)
 class TransfertsStockAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "reference_transfert",
-        "depot_depart",
-        "depot_arrivee",
-        "utilisateur",
-        "date_transfert",
-        "statut",
-    )
+    list_display = ("reference_transfert", "date_transfert", "depot_depart", "depot_arrivee", "balles", "statut", "utilisateur")
+    list_filter = ("statut", "depot_depart", "depot_arrivee", ("date_transfert", admin.DateFieldListFilter))
+    search_fields = ("reference_transfert", "mouvements__lot__code_lot")
+    list_select_related = ("depot_depart", "depot_arrivee", "utilisateur")
+    readonly_fields = ("reference_transfert", "depot_depart", "depot_arrivee", "utilisateur", "date_transfert", "statut", "motif")
+    fields = readonly_fields
+    inlines = (MouvementsTransfertInline,)
 
-    list_filter = (
-        "statut",
-        "depot_depart",
-        "depot_arrivee",
-    )
+    def get_queryset(self, request):
+        return super().get_queryset(request).exclude(statut="BROUILLON")
 
-    search_fields = (
-        "reference_transfert",
-        "utilisateur__username",
-    )
+    @admin.display(description="Balles arrivées / envoyées")
+    def balles(self, obj):
+        arrivees, total = progression(obj)
+        return f"{arrivees} / {total}"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(LignesTransfert)

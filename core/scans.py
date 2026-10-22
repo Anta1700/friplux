@@ -9,12 +9,15 @@ Règles :
   de balles annoncé. Pas de bouton : scanner = recevoir.
 - Une relecture immédiate (même personne, même lot, moins de 5 s) n'est pas comptée.
 - Début et fin de réception d'un lot sont tracés dans audit_logs.
+- Stock par dépôt : la balle reçue entre dans le dépôt de la personne qui scanne (obligatoire).
+  Une balle attendue par transfert dans ce dépôt est comptée comme arrivée du transfert.
 """
 from django.db import transaction
 from django.db.models import Count
 from django.utils import timezone
 
 from .models import AuditLogs, Lots, QrCodes, ResultatScan, ScansLots, StatutLogistique
+from .stock import enregistrer_reception_balle, recevoir_balle_transferee
 
 STATUTS_RECEVABLES = (StatutLogistique.CREE, StatutLogistique.EN_TRANSIT)
 
@@ -56,6 +59,9 @@ class EffetScan:
     DEJA_COMPLET = "deja_complet"        # toutes les balles étaient déjà scannées
     DOUBLON = "doublon"                  # relecture immédiate, non comptée
     NON_RECEVABLE = "non_recevable"      # lot annulé : rien n'est compté
+    SANS_DEPOT = "sans_depot"            # la personne n'a pas de dépôt : la balle ne peut pas entrer en stock
+    TRANSFERT_BALLE = "transfert_balle"  # balle arrivée par transfert dans le dépôt de la personne
+    TRANSFERT_COMPLET = "transfert_complet"  # … et c'était la dernière balle attendue de ce transfert
     AUCUN = "aucun"                      # code inconnu ou ancienne étiquette
 
 
@@ -101,6 +107,12 @@ def enregistrer_scan(code, utilisateur):
 
     if doublon:
         return scan, EffetScan.DOUBLON
+
+    # Balle attendue par transfert dans le dépôt de la personne : elle entre dans son stock.
+    mouvement, complet = recevoir_balle_transferee(lot, personne)
+    if mouvement:
+        scan.transfert = mouvement
+        return scan, EffetScan.TRANSFERT_COMPLET if complet else EffetScan.TRANSFERT_BALLE
     return scan, compter_balle_recue(lot, personne)
 
 
@@ -115,6 +127,11 @@ def compter_balle_recue(lot, utilisateur):
     if deja >= lot.nombre_balles:
         return EffetScan.DEJA_COMPLET
 
+    depot_id = getattr(utilisateur, "depot_id", None)
+    if not depot_id:
+        # Une balle reçue doit être rangée dans un dépôt (stock par dépôt).
+        return EffetScan.SANS_DEPOT
+
     premiere_balle = lot.statut_logistique != StatutLogistique.RECU
     avant = {"statut_logistique": lot.statut_logistique, "nombre_balles_recues": lot.nombre_balles_recues}
 
@@ -125,6 +142,7 @@ def compter_balle_recue(lot, utilisateur):
         lot.date_reception = timezone.localdate()
         champs += ["statut_logistique", "date_reception"]
     lot.save(update_fields=champs)
+    enregistrer_reception_balle(lot, utilisateur, depot_id)
 
     complet = lot.nombre_balles_recues >= lot.nombre_balles
     if premiere_balle or complet:

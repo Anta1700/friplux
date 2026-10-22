@@ -1,0 +1,115 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Stock{% endblock %}
+{% block menu_stock %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .grand-chiffre { display: flex; align-items: baseline; gap: 10px; }
+  .grand-chiffre strong { font-size: 2.2rem; color: var(--marque); line-height: 1; }
+  .choix-depot { display: flex; gap: 8px; }
+  .choix-depot select { flex: 1; min-width: 0; }
+  .choix-depot .bouton { width: auto; margin: 0; padding: 12px 16px; }
+  .transfert { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--ligne); color: inherit; text-decoration: none; }
+  .transfert:last-child { border-bottom: 0; }
+  .transfert .ref { font-weight: 650; color: var(--marque); }
+  .compteur { color: #fff; border-radius: 999px; padding: 3px 10px; font-weight: 700; white-space: nowrap; align-self: center; }
+  .compteur.incomplet { background: var(--erreur); }
+  .compteur.attente { background: var(--alerte); }
+  .lot a { color: var(--marque); font-weight: 600; text-decoration: none; }
+  .depots a { color: var(--marque); font-weight: 600; text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Stock{% if depot %} · {{ depot.nom }}{% endif %}</h1>
+
+{% if user.is_staff %}
+<form method="get" class="carte choix-depot">
+  <select name="depot" aria-label="Dépôt">
+    <option value="">Tous les dépôts</option>
+    {% for d in depots %}<option value="{{ d.pk }}" {% if depot and d.pk == depot.pk %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="bouton secondaire">Voir</button>
+</form>
+{% endif %}
+
+{% if preparation %}
+  <div class="message info">Vous préparez un envoi vers {{ preparation.depot_arrivee.nom }}.
+    <a href="{% url 'core:transfert_envoi' %}" style="color:inherit;font-weight:700">Continuer l'envoi →</a></div>
+{% endif %}
+
+{% if depot %}
+  {% if a_recevoir %}
+  <div class="carte">
+    <h2>À recevoir</h2>
+    <p class="discret" style="margin-top:-4px">Scannez les balles à leur arrivée avec <b>Scanner</b> : elles entrent dans votre stock.</p>
+    {% for t, arrivees, total_t in a_recevoir %}
+      <a class="transfert" href="{% url 'core:transfert_detail' t.pk %}">
+        <div><div class="ref">Depuis {{ t.depot_depart.nom }}</div>
+          <div class="discret">{{ t.reference_transfert }} · envoyé le {{ t.date_transfert|date:"d/m à H:i" }}</div></div>
+        <span class="compteur incomplet">{{ arrivees }} / {{ total_t }}</span>
+      </a>
+    {% endfor %}
+    <a class="bouton" href="{% url 'core:scanner' %}">📷 Scanner les balles arrivées</a>
+  </div>
+  {% endif %}
+
+  <div class="carte">
+    <div class="grand-chiffre"><strong>{{ total }}</strong><span>balle{{ total|s }} disponible{{ total|s }}</span></div>
+    {% if resume %}
+    <table style="margin-top:10px">
+      <thead><tr><th>Catégorie</th><th>Qualité</th><th class="nombre">Balles</th></tr></thead>
+      <tbody>{% for r in resume %}<tr><td>{{ r.categorie }}</td><td>{{ r.qualite }}</td><td class="nombre">{{ r.balles }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  {% if user.depot_id == depot.pk %}
+    <a class="bouton secondaire" href="{% url 'core:transfert_envoi' %}">🚚 Envoyer des balles à un autre dépôt</a>
+  {% endif %}
+
+  {% if envoyes %}
+  <div class="carte">
+    <h2>Envois en route</h2>
+    {% for t, arrivees, total_t in envoyes %}
+      <a class="transfert" href="{% url 'core:transfert_detail' t.pk %}">
+        <div><div class="ref">Vers {{ t.depot_arrivee.nom }}</div>
+          <div class="discret">{{ t.reference_transfert }} · {{ t.date_transfert|date:"d/m à H:i" }}</div></div>
+        <span class="compteur attente">{{ arrivees }} / {{ total_t }} arrivées</span>
+      </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if lignes %}
+  <div class="carte lot">
+    <h2>Lots présents</h2>
+    <table>
+      <thead><tr><th>Lot</th><th class="nombre">Balles</th></tr></thead>
+      <tbody>
+        {% for l in lignes %}
+          <tr><td><a href="{% url 'core:fiche_balle' l.lot.code_lot %}">{{ l.lot.code_lot }}</a><br>
+            <span class="discret">{{ l.lot.categorie_lot }}{% if l.lot.categorie_produit %} › {{ l.lot.categorie_produit.nom }}{% endif %}{% if l.lot.qualite %} · {{ l.lot.qualite }}{% endif %}</span></td>
+            <td class="nombre"><b>{{ l.balles }}</b></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+{% elif user.is_staff %}
+  <div class="carte depots">
+    <div class="grand-chiffre"><strong>{{ total }}</strong><span>balle{{ total|s }} en stock, tous dépôts</span></div>
+    {% if en_route %}<p class="discret">+ {{ en_route }} balle{{ en_route|s }} en route entre deux dépôts.</p>{% endif %}
+    <table style="margin-top:10px">
+      <thead><tr><th>Dépôt</th><th class="nombre">Balles</th></tr></thead>
+      <tbody>{% for x in par_depot %}<tr><td><a href="?depot={{ x.depot.pk }}">{{ x.depot.nom }}</a></td><td class="nombre">{{ x.balles }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% if user.depot_id %}<a class="bouton secondaire" href="{% url 'core:transfert_envoi' %}">🚚 Envoyer des balles à un autre dépôt</a>{% endif %}
+
+{% else %}
+  <div class="message warning">Votre compte n'est rattaché à aucun dépôt. Demandez à l'administrateur de vous rattacher à votre dépôt.</div>
+{% endif %}
+{% endblock %}

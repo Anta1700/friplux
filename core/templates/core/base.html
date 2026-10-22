@@ -99,6 +99,7 @@
       <nav class="menu">
         <a href="{% url 'core:scanner' %}" class="{% block menu_scanner %}{% endblock %}">Scanner</a>
         <a href="{% url 'core:ventes' %}" class="{% block menu_ventes %}{% endblock %}">Vente</a>
+        <a href="{% url 'core:stock' %}" class="{% block menu_stock %}{% endblock %}">Stock</a>
         <a href="{% url 'core:statistiques' %}" class="{% block menu_stats %}{% endblock %}">Stats</a>
         {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
         <form method="post" action="{% url 'core:deconnexion' %}" style="display:inline">

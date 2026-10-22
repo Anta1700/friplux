@@ -16,6 +16,7 @@ from .models import (
     Clients, Depots, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
 )
 from .montants import entier_fcfa
+from .stock import message_balles_ailleurs
 from .stats_ventes import statistiques_ventes as calculer_statistiques_ventes
 from .scans import identifier
 from .ventes import (
@@ -116,7 +117,8 @@ def vente_ajouter(request, code_lot):
     )
     vente = vente_en_cours(request.user)
     ligne = vente.lignes.filter(lot=lot).first() if vente else None
-    disponibles = balles_disponibles(lot)
+    disponibles = balles_disponibles(lot, request.user.depot_id)
+    ailleurs = message_balles_ailleurs(lot, request.user.depot_id) if not disponibles else ""
     conseille = lot.prix_conseille
 
     if request.method == "POST":
@@ -138,6 +140,7 @@ def vente_ajouter(request, code_lot):
 
     return render(request, "core/vente_ajouter.html", {
         "lot": lot, "formulaire": formulaire, "disponibles": disponibles, "conseille": conseille, "ligne": ligne,
+        "ailleurs": ailleurs,
     })
 
 

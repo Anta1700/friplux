@@ -1,0 +1,82 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Envoyer des balles{% endblock %}
+{% block menu_stock %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ligne); }
+  .ligne:last-of-type { border-bottom: 0; }
+  .ligne .quoi { font-weight: 650; }
+  .ligne a { color: var(--marque); text-decoration: none; }
+  .ligne .nb { font-weight: 800; font-size: 1.15rem; white-space: nowrap; text-align: right; }
+  .destination .rangee { display: flex; gap: 8px; margin-top: 6px; }
+  .destination select { flex: 1; min-width: 0; }
+  .destination .bouton { width: auto; margin: 0; padding: 12px 14px; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<h1>Envoyer des balles</h1>
+
+{% if not transfert %}
+  <form method="post" class="carte">
+    {% csrf_token %}
+    <label for="depot_arrivee">Vers quel dépôt ?</label>
+    <select name="depot_arrivee" id="depot_arrivee" required>
+      <option value="">— Choisir —</option>
+      {% for d in autres %}<option value="{{ d.pk }}">{{ d.nom }}</option>{% endfor %}
+    </select>
+    <input type="hidden" name="ensuite" value="scanner">
+    <button type="submit" class="bouton">Continuer : scanner les balles</button>
+  </form>
+  <a class="bouton secondaire" href="{% url 'core:stock' %}">Annuler</a>
+{% else %}
+  <form method="post" class="carte destination">
+    {% csrf_token %}
+    <div>De <b>{{ transfert.depot_depart.nom }}</b> vers :</div>
+    <div class="rangee">
+      <select name="depot_arrivee" aria-label="Dépôt de destination">
+        {% for d in autres %}<option value="{{ d.pk }}" {% if d.pk == transfert.depot_arrivee_id %}selected{% endif %}>{{ d.nom }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="bouton secondaire">Changer</button>
+    </div>
+  </form>
+
+  <div class="carte">
+    <h2>Balles à envoyer</h2>
+    {% for m in lignes %}
+      <div class="ligne">
+        <div>
+          <div class="quoi">{{ m.lot.categorie_lot }}{% if m.lot.categorie_produit %} › {{ m.lot.categorie_produit.nom }}{% endif %}{% if m.lot.qualite %} · {{ m.lot.qualite }}{% endif %}</div>
+          <div class="discret"><a href="{% url 'core:transfert_ajouter' m.lot.code_lot %}">{{ m.lot.code_lot }}</a></div>
+        </div>
+        <div class="nb">{{ m.balles }} balle{{ m.balles|s }}
+          <form method="post" action="{% url 'core:transfert_retirer' m.pk %}">{% csrf_token %}<button type="submit" class="lien-discret" style="font-size:.9rem;font-weight:500">Retirer</button></form>
+        </div>
+      </div>
+    {% empty %}
+      <p class="discret" style="text-align:center">Aucune balle pour l'instant.</p>
+    {% endfor %}
+    {% if lignes %}<p style="text-align:right;margin:8px 0 0"><b>Total : {{ total }} balle{{ total|s }}</b></p>{% endif %}
+  </div>
+
+  <a class="bouton {% if lignes %}secondaire{% endif %}" href="{% url 'core:transfert_scanner' %}">📷 {% if lignes %}Ajouter un autre lot{% else %}Scanner une balle à envoyer{% endif %}</a>
+  {% if lignes %}
+    <form method="post" action="{% url 'core:transfert_envoyer' %}" id="form-envoi">{% csrf_token %}
+      <button type="submit" class="bouton succes" id="btn-envoi">Envoyer à {{ transfert.depot_arrivee.nom }}</button>
+    </form>
+    <p class="discret" style="text-align:center;margin-top:0">Les balles quittent votre stock dès l'envoi.</p>
+  {% endif %}
+  <form method="post" action="{% url 'core:transfert_abandonner' %}" style="text-align:center;margin-top:8px">{% csrf_token %}
+    <button type="submit" class="lien-discret">Abandonner cet envoi</button>
+  </form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+var f = document.getElementById("form-envoi");
+if (f) f.addEventListener("submit", function () { document.getElementById("btn-envoi").disabled = true; });
+</script>
+{% endblock %}

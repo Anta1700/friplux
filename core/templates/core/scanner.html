@@ -1,7 +1,8 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block titre %}{% if mode_vente %}Vendre une balle{% else %}Scanner une balle{% endif %}{% endblock %}
-{% block menu_scanner %}{% if not mode_vente %}actif{% endif %}{% endblock %}
+{% block titre %}{% if mode_vente %}Vendre une balle{% elif mode_transfert %}Envoyer une balle{% else %}Scanner une balle{% endif %}{% endblock %}
+{% block menu_scanner %}{% if not mode_vente and not mode_transfert %}actif{% endif %}{% endblock %}
+{% block menu_stock %}{% if mode_transfert %}actif{% endif %}{% endblock %}
 {% block menu_ventes %}{% if mode_vente %}actif{% endif %}{% endblock %}
 
 {% block entete %}
@@ -27,7 +28,11 @@
 {% endblock %}
 
 {% block contenu %}
-{% if mode_vente %}
+{% if mode_transfert %}
+<h1>Envoyer : scanner la balle</h1>
+<p class="discret" style="margin-top:-8px">Envoi vers <b>{{ transfert.depot_arrivee.nom }}</b>. Scannez une balle de chaque lot à envoyer.</p>
+<a class="bouton secondaire" href="{% url 'core:transfert_envoi' %}">← Retour à l'envoi</a>
+{% elif mode_vente %}
 <h1>Vendre : scanner la balle</h1>
 <p class="discret" style="margin-top:-8px">Scannez le QR d'une balle que le client achète. Rien n'est compté en réception.</p>
 {% if vente %}<a class="bouton secondaire" href="{% url 'core:ventes' %}">← Retour à la vente en cours</a>{% endif %}
@@ -35,8 +40,8 @@
 <h1>Scanner une balle</h1>
 {% if not user.depot_id %}
   <div class="message warning">
-    Votre compte n'est rattaché à aucun dépôt : vos scans seront enregistrés « sans dépôt ».
-    Demandez à l'administrateur de vous rattacher à votre dépôt.
+    Votre compte n'est rattaché à aucun dépôt : les balles que vous scannez ne peuvent pas être reçues
+    (elles doivent entrer dans le stock d'un dépôt). Demandez à l'administrateur de vous rattacher à votre dépôt.
   </div>
 {% endif %}
 <p class="discret" style="margin-top:-8px">Toutes les balles d'un même lot portent le même QR code.</p>
@@ -77,7 +82,7 @@
 
 <canvas id="toile" class="cache"></canvas>
 
-{% if derniers and not mode_vente %}
+{% if derniers and not mode_vente and not mode_transfert %}
 <div class="carte derniers">
   <h2>Mes derniers scans</h2>
   <table>

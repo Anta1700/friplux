@@ -778,64 +778,44 @@ class Moratoires(models.Model):
         verbose_name_plural = "moratoires"
 
 
+class TypeMouvement(models.TextChoices):
+    RECEPTION_BALLE = "RECEPTION_BALLE", "Réception d'une balle"
+    TRANSFERT_BALLES = "TRANSFERT_BALLES", "Transfert de balles"
+
+
 class MouvementsStock(models.Model):
+    """
+    Mouvements de balles entre « lieux » : réception dans un dépôt, transfert d'un dépôt à un autre.
+    Le stock d'un dépôt = réceptions + transferts reçus - transferts envoyés - balles vendues.
+    """
     id = models.BigAutoField(primary_key=True)
-
-    type_mouvement = models.CharField(max_length=30)
-
-    depot_depart = models.ForeignKey(
-        Depots,
-        models.DO_NOTHING,
-        blank=True,
-        null=True
-    )
-
-    depot_arrivee = models.ForeignKey(
-        Depots,
-        models.DO_NOTHING,
-        related_name='mouvementsstock_depot_arrivee_set',
-        blank=True,
-        null=True
-    )
-
-    lot = models.ForeignKey(
-        Lots,
-        models.DO_NOTHING,
-        blank=True,
-        null=True
-    )
-
-    categorie_produit = models.ForeignKey(
-        CategoriesProduits,
-        models.DO_NOTHING,
-        blank=True,
-        null=True
-    )
-
-    quantite_pieces = models.IntegerField()
-    poids_kg = models.DecimalField(
-        max_digits=12,
-        decimal_places=3
-    )
-
-    reference_document = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True
-    )
-
-    utilisateur = models.ForeignKey(
-        'User',
-        models.DO_NOTHING
-    )
-
-    date_mouvement = models.DateTimeField()
+    type_mouvement = models.CharField("type", max_length=30)
+    depot_depart = models.ForeignKey(Depots, models.DO_NOTHING, blank=True, null=True, verbose_name="dépôt de départ",
+                                     related_name="mouvements_sortants")
+    depot_arrivee = models.ForeignKey(Depots, models.DO_NOTHING, blank=True, null=True, verbose_name="dépôt d'arrivée",
+                                      related_name="mouvementsstock_depot_arrivee_set")
+    lot = models.ForeignKey(Lots, models.DO_NOTHING, blank=True, null=True, related_name="mouvements")
+    categorie_produit = models.ForeignKey(CategoriesProduits, models.DO_NOTHING, blank=True, null=True)
+    balles = models.IntegerField(blank=True, null=True)
+    balles_recues = models.IntegerField("balles arrivées", blank=True, null=True)
+    transfert = models.ForeignKey("TransfertsStock", models.DO_NOTHING, blank=True, null=True, related_name="mouvements")
+    quantite_pieces = models.IntegerField(default=0)
+    poids_kg = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    reference_document = models.CharField(max_length=100, blank=True, null=True)
+    utilisateur = models.ForeignKey('User', models.DO_NOTHING)
+    date_mouvement = models.DateTimeField("date")
     statut = models.CharField(max_length=20)
     commentaire = models.TextField(blank=True, null=True)
 
     class Meta:
         managed = False
         db_table = 'mouvements_stock'
+        verbose_name = "mouvement de stock"
+        verbose_name_plural = "mouvements de stock"
+
+    @property
+    def balles_manquantes(self):
+        return (self.balles or 0) - (self.balles_recues or 0)
 
 
 class OuverturesLots(models.Model):
@@ -965,37 +945,33 @@ class Stocks(models.Model):
         unique_together = (('depot', 'categorie_produit'),)
 
 
+class StatutTransfert(models.TextChoices):
+    BROUILLON = "BROUILLON", "En préparation"
+    EN_COURS = "EN_COURS", "En route"
+    RECU = "RECU", "Arrivé"
+    RECU_AVEC_ECART = "RECU_AVEC_ECART", "Arrivé avec balles manquantes"
+    ANNULE = "ANNULE", "Annulé"
+
+
 class TransfertsStock(models.Model):
     id = models.BigAutoField(primary_key=True)
-
-    reference_transfert = models.CharField(
-        unique=True,
-        max_length=50
-    )
-
-    depot_depart = models.ForeignKey(
-        Depots,
-        models.DO_NOTHING
-    )
-
-    depot_arrivee = models.ForeignKey(
-        Depots,
-        models.DO_NOTHING,
-        related_name='transfertsstock_depot_arrivee_set'
-    )
-
-    utilisateur = models.ForeignKey(
-        'User',
-        models.DO_NOTHING
-    )
-
-    date_transfert = models.DateTimeField()
-    statut = models.CharField(max_length=20)
+    reference_transfert = models.CharField("n° de transfert", unique=True, max_length=50)
+    depot_depart = models.ForeignKey(Depots, models.DO_NOTHING, verbose_name="de", related_name="transferts_sortants")
+    depot_arrivee = models.ForeignKey(Depots, models.DO_NOTHING, verbose_name="vers",
+                                      related_name='transfertsstock_depot_arrivee_set')
+    utilisateur = models.ForeignKey('User', models.DO_NOTHING, verbose_name="envoyé par")
+    date_transfert = models.DateTimeField("date d'envoi")
+    statut = models.CharField(max_length=20, choices=StatutTransfert.choices, default=StatutTransfert.BROUILLON)
     motif = models.TextField(blank=True, null=True)
 
     class Meta:
         managed = False
         db_table = 'transferts_stock'
+        verbose_name = "transfert"
+        verbose_name_plural = "transferts entre dépôts"
+
+    def __str__(self):
+        return self.reference_transfert
 
 
 class UserDepots(models.Model):

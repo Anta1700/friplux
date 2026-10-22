@@ -25,15 +25,16 @@
   <div class="classement">{{ lot.categorie_lot }}{% if lot.categorie_produit %} › {{ lot.categorie_produit.nom }}{% endif %}</div>
   <div class="pastilles">
     {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% endif %}
-    <span class="dispo {% if not disponibles %}zero{% endif %}">{{ disponibles }} balle{{ disponibles|pluralize }} disponible{{ disponibles|pluralize }}</span>
+    <span class="dispo {% if not disponibles %}zero{% endif %}">{{ disponibles }} balle{{ disponibles|s }} dans votre dépôt</span>
   </div>
-  {% if ligne %}<p class="discret" style="margin:4px 0 0">Déjà dans la vente : {{ ligne.nombre_balles }} balle{{ ligne.nombre_balles|pluralize }}. Vous pouvez modifier.</p>{% endif %}
+  {% if ligne %}<p class="discret" style="margin:4px 0 0">Déjà dans la vente : {{ ligne.nombre_balles }} balle{{ ligne.nombre_balles|s }}. Vous pouvez modifier.</p>{% endif %}
 </div>
 
 {% if not disponibles %}
   <div class="message error">
     {% if lot.statut_logistique == "ANNULE" %}Ce lot est annulé : il ne peut pas être vendu.
     {% elif not lot.nombre_balles_recues %}Ce lot n'a pas encore été réceptionné. Scannez d'abord ses balles avec « Scanner » (réception).
+    {% elif ailleurs %}Aucune balle de ce lot dans votre dépôt. {{ ailleurs }}
     {% else %}Toutes les balles de ce lot sont déjà vendues.{% endif %}
   </div>
   <a class="bouton secondaire" href="{% url 'core:vente_scanner' %}">Scanner une autre balle</a>

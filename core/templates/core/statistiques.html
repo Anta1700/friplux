@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load friplux %}
 {% block titre %}Statistiques des scans{% endblock %}
 {% block menu_stats %}actif{% endblock %}
 
@@ -54,7 +55,7 @@
   <p class="discret" style="margin-bottom:0">
     Scans : chaque lecture d'étiquette. Lots : lots différents scannés (rescanner un lot ne le compte qu'une fois).
     Balles : nombre de balles contenues dans ces lots.
-    {% if inconnus %}<br>{{ inconnus }} lecture{{ inconnus|pluralize }} de code inconnu (non comptée{{ inconnus|pluralize }} ci-dessus).{% endif %}
+    {% if inconnus %}<br>{{ inconnus }} lecture{{ inconnus|s }} de code inconnu (non comptée{{ inconnus|s }} ci-dessus).{% endif %}
   </p>
 </div>
 

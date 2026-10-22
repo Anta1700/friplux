@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load friplux %}
 {% block titre %}{{ lot.code_lot }}{% endblock %}
 
 {% block entete %}
@@ -43,9 +44,9 @@
   </div>
   <div class="pastilles">
     {% if lot.qualite %}<span class="qualite">{{ lot.qualite }}</span>{% endif %}
-    <span class="nb-balles">{{ lot.nombre_balles }} balle{{ lot.nombre_balles|pluralize }}</span>
+    <span class="nb-balles">{{ lot.nombre_balles }} balle{{ lot.nombre_balles|s }}</span>
     <span class="scannees {% if scannees >= lot.nombre_balles %}complet{% else %}incomplet{% endif %}"
-          title="Balles scannées sur balles annoncées">{{ scannees }} / {{ lot.nombre_balles }} scannée{{ scannees|pluralize }}</span>
+          title="Balles scannées sur balles annoncées">{{ scannees }} / {{ lot.nombre_balles }} scannée{{ scannees|s }}</span>
   </div>
   <p class="discret" style="margin-bottom:0">
     {% if lot.statut_ouverture == "OUVERT" %}Lot ouvert le {{ lot.date_ouverture|date:"d/m/Y" }}{% else %}Lot non ouvert{% endif %}
@@ -88,10 +89,15 @@
         {% if reception and reception.utilisateur %}<br><span class="discret">par {{ reception.utilisateur.get_full_name|default:reception.utilisateur }}</span>{% endif %}
       {% else %}<span class="vide">Pas encore reçu</span>{% endif %}
     </dd>
+    <dt>Où sont les balles</dt>
+    <dd>
+      {% for nom, n in repartition.0 %}{{ nom }} : {{ n }} balle{{ n|s }}<br>{% empty %}{% if not repartition.1 %}<span class="vide">Aucune balle en stock</span>{% endif %}{% endfor %}
+      {% if repartition.1 %}<span class="discret">{{ repartition.1 }} en route (transfert)</span>{% endif %}
+    </dd>
     <dt>Vente</dt>
     <dd>
-      {% if vendues %}{{ vendues }} balle{{ vendues|pluralize }} vendue{{ vendues|pluralize }}<br>{% endif %}
-      <span class="{% if disponibles %}{% else %}discret{% endif %}">{{ disponibles }} disponible{{ disponibles|pluralize }} à la vente</span>
+      {% if vendues %}{{ vendues }} balle{{ vendues|s }} vendue{{ vendues|s }}<br>{% endif %}
+      <span class="{% if disponibles %}{% else %}discret{% endif %}">{{ disponibles }} disponible{{ disponibles|s }} à la vente</span>
     </dd>
         <dt>Étiquette</dt>
     <dd>

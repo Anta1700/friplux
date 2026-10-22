@@ -6,7 +6,8 @@ réimporter sa fiche proprement.
     python manage.py reinitialiser_conteneur "TIIU418469 9" --confirmer  # efface vraiment
 
 Sécurités :
-- refuse si un lot du conteneur a déjà été ouvert ou a un mouvement de stock ;
+- refuse si un lot du conteneur a déjà été ouvert, vendu ou transféré entre dépôts ;
+- les réceptions par scan (scans et entrées en stock) sont supprimées avec les lots ;
 - tout se fait dans une seule transaction (tout ou rien) ;
 - le conteneur, le fournisseur et le catalogue des références sont conservés ;
 - l'opération est inscrite dans le journal d'audit.
@@ -18,7 +19,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import AuditLogs, Conteneurs, Lots, MouvementsStock, OuverturesLots, QrCodes, ScansLots
+from core.models import AuditLogs, Conteneurs, LignesVente, Lots, MouvementsStock, OuverturesLots, QrCodes, ScansLots, TypeMouvement
 
 
 class Command(BaseCommand):
@@ -41,16 +42,18 @@ class Command(BaseCommand):
         nb_scans = ScansLots.objects.filter(lot__in=lots).count()
         nb_recus = lots.filter(statut_logistique="RECU").count()
         nb_ouvertures = OuverturesLots.objects.filter(lot__in=lots).count()
-        nb_mouvements = MouvementsStock.objects.filter(lot__in=lots).count()
+        receptions = MouvementsStock.objects.filter(lot__in=lots, type_mouvement=TypeMouvement.RECEPTION_BALLE)
+        nb_mouvements = MouvementsStock.objects.filter(lot__in=lots).exclude(type_mouvement=TypeMouvement.RECEPTION_BALLE).count()
+        nb_ventes = LignesVente.objects.filter(lot__in=lots).count()
         nb_ouverts = lots.filter(statut_ouverture="OUVERT").count()
 
         self.stdout.write(f"Conteneur {conteneur.numero_conteneur} ({conteneur.fournisseur}) :")
         self.stdout.write(f"  {nb_lots} lot(s), {nb_qr} QR code(s), {nb_scans} scan(s), {nb_recus} lot(s) marqué(s) reçu(s)")
 
-        if nb_ouvertures or nb_mouvements or nb_ouverts:
+        if nb_ouvertures or nb_mouvements or nb_ouverts or nb_ventes:
             raise CommandError(
-                f"Refusé : {nb_ouverts} lot(s) ouvert(s), {nb_ouvertures} ouverture(s) et "
-                f"{nb_mouvements} mouvement(s) de stock enregistrés. Ces lots ont déjà servi."
+                f"Refusé : {nb_ouverts} lot(s) ouvert(s), {nb_ouvertures} ouverture(s), "
+                f"{nb_mouvements} transfert(s) et {nb_ventes} ligne(s) de vente enregistrés. Ces lots ont déjà servi."
             )
         if nb_lots == 0:
             self.stdout.write(self.style.SUCCESS("Rien à supprimer."))
@@ -64,6 +67,7 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             codes = list(lots.order_by("code_lot").values_list("code_lot", flat=True))
+            receptions.delete()
             ScansLots.objects.filter(lot__in=lots).delete()
             QrCodes.objects.filter(lot__in=lots).delete()
             lots.delete()

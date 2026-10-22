@@ -25,7 +25,7 @@
 
 <div class="carte">
   <div class="recap">
-    <span>{{ balles }} balle{{ balles|pluralize }} · {{ lignes|length }} lot{{ lignes|length|pluralize }}</span>
+    <span>{{ balles }} balle{{ balles|s }} · {{ lignes|length }} lot{{ lignes|length|s }}</span>
     <span class="gros-total">{{ total|fcfa }}</span>
   </div>
   <a href="{% url 'core:ventes' %}" class="discret">Modifier la vente</a>

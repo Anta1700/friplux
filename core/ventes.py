@@ -10,8 +10,8 @@ Déroulement :
    S'il reste un montant à payer : moratoire avec échéances mensuelles (client obligatoire).
 3. Les paiements suivants sont imputés sur les échéances, de la plus ancienne à la plus récente.
 
-Stock : balles disponibles d'un lot = balles reçues (scannées à la réception) - balles déjà vendues
-(ventes validées). Vérifié à l'ajout, puis à nouveau à la validation sous verrou, pour que deux
+Stock : on ne vend que les balles présentes dans SON dépôt (voir core/stock.py : réceptions,
+transferts et ventes déjà validées). Vérifié à l'ajout, puis à nouveau à la validation sous verrou, pour que deux
 vendeurs ne puissent pas vendre la même balle.
 
 Numérotation : FRPLX-VTE-AAAA-NNNNNN et FRPLX-FAC-AAAA-NNNNNN, sans trou (attribués seulement à la
@@ -48,6 +48,7 @@ from .models import (
     Ventes,
 )
 from .montants import entier_fcfa
+from .stock import balles_dans_depot, message_balles_ailleurs, stock_balles
 
 PREFIXE_VENTE = "FRPLX-VTE"
 PREFIXE_FACTURE = "FRPLX-FAC"
@@ -91,11 +92,17 @@ def balles_vendues(lot):
     return int(total or 0)
 
 
-def balles_disponibles(lot):
-    """Balles reçues et pas encore vendues (0 pour un lot annulé)."""
+def balles_disponibles(lot, depot_id=None):
+    """
+    Balles disponibles à la vente (0 pour un lot annulé) :
+    dans le dépôt `depot_id` si indiqué, sinon dans tous les dépôts réunis.
+    """
     if lot.statut_logistique == StatutLogistique.ANNULE:
         return 0
-    return max(0, (lot.nombre_balles_recues or 0) - balles_vendues(lot))
+    if depot_id:
+        return balles_dans_depot(lot, depot_id)
+    stock, _ = stock_balles(lots=[lot.pk])
+    return sum(n for n in stock.values() if n > 0)
 
 
 def designation_lot(lot):
@@ -107,7 +114,7 @@ def designation_lot(lot):
     return " · ".join(morceaux)[:200]
 
 
-def _verifier_vendable(lot, nombre):
+def _verifier_vendable(lot, nombre, depot_id):
     if lot.statut_logistique == StatutLogistique.ANNULE:
         raise ErreurVente(f"Le lot {lot.code_lot} est annulé : il ne peut pas être vendu.")
     if not lot.nombre_balles_recues:
@@ -115,14 +122,16 @@ def _verifier_vendable(lot, nombre):
             f"Le lot {lot.code_lot} n'a pas encore été réceptionné. "
             "Scannez d'abord ses balles avec « Scanner » (réception), puis vendez-les."
         )
-    dispo = balles_disponibles(lot)
+    dispo = balles_disponibles(lot, depot_id)
     if nombre > dispo:
+        ailleurs = message_balles_ailleurs(lot, depot_id)
         if dispo == 0:
-            raise ErreurVente(f"Plus aucune balle disponible pour le lot {lot.code_lot} : tout est vendu.")
-        raise ErreurVente(
-            f"Il ne reste que {dispo} balle{'s' if dispo > 1 else ''} disponible{'s' if dispo > 1 else ''} "
-            f"pour le lot {lot.code_lot}."
-        )
+            debut = (f"Aucune balle du lot {lot.code_lot} dans votre dépôt." if ailleurs
+                     else f"Plus aucune balle disponible pour le lot {lot.code_lot} : tout est vendu.")
+        else:
+            debut = (f"Il ne reste que {dispo} balle{'s' if dispo > 1 else ''} disponible{'s' if dispo > 1 else ''} "
+                     f"pour le lot {lot.code_lot} dans votre dépôt.")
+        raise ErreurVente(f"{debut} {ailleurs}".strip())
 
 
 # ------------------------------------------------------------------
@@ -190,7 +199,12 @@ def ajouter_au_panier(utilisateur, lot, nombre, prix):
     lot = Lots.objects.select_for_update(of=("self",)).select_related(
         "categorie_lot", "categorie_produit", "qualite", "reference_fournisseur"
     ).get(pk=lot.pk)
-    _verifier_vendable(lot, nombre)
+    if not utilisateur.depot_id:
+        raise ErreurVente(
+            "Votre compte n'est rattaché à aucun dépôt : impossible de vendre. "
+            "Demandez à l'administrateur de vous rattacher à votre dépôt."
+        )
+    _verifier_vendable(lot, nombre, utilisateur.depot_id)
 
     vente = _vente_en_cours_ou_nouvelle(utilisateur)
     conseille = lot.prix_conseille
@@ -316,7 +330,7 @@ def valider_vente(
     # Verrou sur les lots vendus (dans un ordre fixe) puis contrôle final du stock.
     lots = {l.pk: l for l in Lots.objects.select_for_update().filter(pk__in=[x.lot_id for x in lignes]).order_by("pk")}
     for ligne in lignes:
-        _verifier_vendable(lots[ligne.lot_id], ligne.nombre_balles)
+        _verifier_vendable(lots[ligne.lot_id], ligne.nombre_balles, vente.depot_id)
 
     total = entier_fcfa(sum((l.montant_ligne for l in lignes), Decimal("0")))
     paye = total if montant_paye in (None, "") else _entier_positif(montant_paye, "Montant payé")

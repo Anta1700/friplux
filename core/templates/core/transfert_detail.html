@@ -1,0 +1,57 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Transfert {{ t.reference_transfert }}{% endblock %}
+{% block menu_stock %}actif{% endblock %}
+
+{% block entete %}
+<style>
+  .trajet { font-size: 1.15rem; font-weight: 700; margin: 6px 0; }
+  .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ligne); }
+  .ligne:last-child { border-bottom: 0; }
+  .ligne a { color: var(--marque); text-decoration: none; font-weight: 600; }
+  .compteur { color: #fff; border-radius: 999px; padding: 4px 12px; font-weight: 700; white-space: nowrap; align-self: center; }
+  .compteur.incomplet { background: var(--erreur); }
+  .compteur.complet { background: var(--ok); }
+  .compteur.manque { background: #6b6b6b; }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+  <div class="discret">{{ t.reference_transfert }}</div>
+  <div class="trajet">{{ t.depot_depart.nom }} → {{ t.depot_arrivee.nom }}</div>
+  <div class="discret">Envoyé le {{ t.date_transfert|date:"d/m/Y à H:i" }} par {{ t.utilisateur.get_full_name }}</div>
+  <p style="margin:10px 0 0">
+    {% if t.statut == "EN_COURS" %}<span class="pastille attente">En route · {{ arrivees }} / {{ total }} balles arrivées</span>
+    {% elif t.statut == "RECU" %}<span class="pastille ok">Arrivé · {{ total }} balles</span>
+    {% elif t.statut == "RECU_AVEC_ECART" %}<span class="pastille erreur">Arrivé avec {{ manquantes }} balle{{ manquantes|s }} manquante{{ manquantes|s }}</span>
+    {% else %}<span class="pastille neutre">Annulé</span>{% endif %}
+  </p>
+</div>
+
+<div class="carte">
+  <h2>Balles</h2>
+  {% for m in lignes %}
+    <div class="ligne">
+      <div><a href="{% url 'core:fiche_balle' m.lot.code_lot %}">{{ m.lot.code_lot }}</a><br>
+        <span class="discret">{{ m.lot.categorie_lot }}{% if m.lot.categorie_produit %} › {{ m.lot.categorie_produit.nom }}{% endif %}{% if m.lot.qualite %} · {{ m.lot.qualite }}{% endif %}</span></div>
+      {% if t.statut == "ANNULE" %}<span class="compteur manque">{{ m.balles }}</span>
+      {% else %}<span class="compteur {% if m.balles_recues >= m.balles %}complet{% elif t.statut == 'RECU_AVEC_ECART' %}manque{% else %}incomplet{% endif %}">{{ m.balles_recues }} / {{ m.balles }}</span>{% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+{% if en_route and cote_arrivee %}
+  <a class="bouton" href="{% url 'core:scanner' %}">📷 Scanner les balles arrivées</a>
+  <p class="discret" style="text-align:center;margin-top:0">Chaque balle scannée par {{ t.depot_arrivee.nom }} entre dans son stock.</p>
+  <form method="post" action="{% url 'core:transfert_cloturer' t.pk %}" onsubmit="return confirm('Clôturer ce transfert ? Les balles non scannées seront déclarées manquantes.');">
+    {% csrf_token %}<button type="submit" class="bouton secondaire">Il manque des balles : clôturer le transfert</button>
+  </form>
+{% endif %}
+{% if en_route and cote_depart and not arrivees %}
+  <form method="post" action="{% url 'core:transfert_annuler' t.pk %}" onsubmit="return confirm('Annuler cet envoi ? Les balles reviennent dans votre stock.');">
+    {% csrf_token %}<button type="submit" class="bouton secondaire">Annuler l'envoi</button>
+  </form>
+{% endif %}
+<a class="bouton secondaire" href="{% url 'core:stock' %}">Retour au stock</a>
+{% endblock %}

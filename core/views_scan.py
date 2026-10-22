@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from .models import CategoriesLots, Conteneurs, Depots, Lots, ResultatScan, ScansLots, StatutLogistique, User
+from .stock import repartition
 from .ventes import balles_disponibles, balles_vendues
 from .scans import EffetScan, compteurs_par_categorie, derniere_reception, enregistrer_scan, filtrer_scans
 
@@ -24,6 +25,16 @@ def _message_scan(request, scan, effet):
         messages.info(request, f"Toutes les balles de ce lot sont déjà scannées ({compteur}).")
     elif effet == EffetScan.DOUBLON:
         messages.warning(request, f"Scan répété à l'instant : balle non recomptée ({compteur}).")
+    elif effet == EffetScan.SANS_DEPOT:
+        messages.error(request, "Votre compte n'est rattaché à aucun dépôt : la balle n'a pas été comptée. "
+                                "Demandez à l'administrateur de vous rattacher à votre dépôt.")
+    elif effet in (EffetScan.TRANSFERT_BALLE, EffetScan.TRANSFERT_COMPLET):
+        m = scan.transfert
+        texte = f"Balle arrivée (transfert {m.transfert.reference_transfert} depuis {m.depot_depart.nom}) : " \
+                f"{m.balles_recues} / {m.balles} pour ce lot."
+        if effet == EffetScan.TRANSFERT_COMPLET:
+            texte = "✓ " + texte + " Transfert complet : toutes les balles sont arrivées."
+        messages.success(request, texte)
     elif effet == EffetScan.NON_RECEVABLE:
         messages.error(request, f"Lot {lot.get_statut_logistique_display().lower()} : balle non comptée.")
 
@@ -79,6 +90,7 @@ def fiche_balle(request, code_lot):
         "scannees": lot.nombre_balles_recues or 0,
         "vendues": balles_vendues(lot),
         "disponibles": balles_disponibles(lot),
+        "repartition": repartition(lot),
         "voir_prix": request.user.is_staff,
         "StatutLogistique": StatutLogistique,
     }

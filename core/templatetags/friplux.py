@@ -20,3 +20,12 @@ def fcfa_nombre(valeur):
 @register.filter
 def en_lettres(valeur):
     return montant_en_lettres(valeur)
+
+
+@register.filter
+def s(nombre):
+    """Pluriel à la française : {{ n }} balle{{ n|s }} -> « 0 balle », « 1 balle », « 2 balles »."""
+    try:
+        return "s" if abs(float(nombre)) >= 2 else ""
+    except (TypeError, ValueError):
+        return ""

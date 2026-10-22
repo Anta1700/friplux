@@ -37,7 +37,7 @@
           <div class="quoi">{{ l.designation }}</div>
           <div class="calcul">
             <a href="{% url 'core:vente_ajouter' l.lot.code_lot %}">{{ l.lot.code_lot }}</a><br>
-            {{ l.nombre_balles }} balle{{ l.nombre_balles|pluralize }} × {{ l.prix_unitaire|fcfa }}
+            {{ l.nombre_balles }} balle{{ l.nombre_balles|s }} × {{ l.prix_unitaire|fcfa }}
           </div>
         </div>
         <div class="montant">
@@ -66,8 +66,8 @@
 <div class="carte">
   <h2>Aujourd'hui{% if not user.is_staff and user.depot %} · {{ user.depot.nom }}{% endif %}</h2>
   <div class="jour">
-    <div><b>{{ jour.ventes }}</b><span>vente{{ jour.ventes|pluralize }}</span></div>
-    <div><b>{{ jour.balles }}</b><span>balle{{ jour.balles|pluralize }} vendue{{ jour.balles|pluralize }}</span></div>
+    <div><b>{{ jour.ventes }}</b><span>vente{{ jour.ventes|s }}</span></div>
+    <div><b>{{ jour.balles }}</b><span>balle{{ jour.balles|s }} vendue{{ jour.balles|s }}</span></div>
     <div><b>{{ jour.montant|fcfa_nombre }}</b><span>FCFA vendus</span></div>
     <div><b>{{ jour.encaisse|fcfa_nombre }}</b><span>FCFA encaissés</span></div>
   </div>

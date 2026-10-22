@@ -57,7 +57,7 @@
 
 {% with t=stats.totaux %}
 <div class="chiffres">
-  <div><strong>{{ t.ventes }}</strong><span>vente{{ t.ventes|pluralize }} · {{ t.balles }} balle{{ t.balles|pluralize }}</span></div>
+  <div><strong>{{ t.ventes }}</strong><span>vente{{ t.ventes|s }} · {{ t.balles }} balle{{ t.balles|s }}</span></div>
   <div><strong>{{ t.vendu|fcfa_nombre }}</strong><span>FCFA vendus</span></div>
   <div><strong>{{ t.encaisse|fcfa_nombre }}</strong><span>FCFA encaissés</span></div>
   <div class="{% if t.reste %}attention{% endif %}"><strong>{{ t.reste|fcfa_nombre }}</strong><span>FCFA restant à encaisser</span></div>
@@ -68,7 +68,7 @@
   <h2>Par dépôt</h2>
   {% for d in stats.depots %}
     <div class="depot">
-      <div class="titre"><b>{{ d.nom }}</b><span class="discret">{{ d.ventes }} vente{{ d.ventes|pluralize }}</span></div>
+      <div class="titre"><b>{{ d.nom }}</b><span class="discret">{{ d.ventes }} vente{{ d.ventes|s }}</span></div>
       <dl>
         <div><dt>Balles</dt><dd>{{ d.balles }}</dd></div>
         <div><dt>Vendu</dt><dd>{{ d.vendu|fcfa_nombre }}</dd></div>
@@ -152,7 +152,7 @@
             <td><a href="{% url 'core:vente_detail' r.vente.pk %}">{{ r.vente.client.nom|default:"Client" }}</a>
               {% if r.vente.client.telephone %}<br><a href="tel:{{ r.vente.client.telephone }}" class="discret">📞 {{ r.vente.client.telephone }}</a>{% endif %}
               <br><span class="discret">{{ r.vente.depot.nom }} · échéance n° {{ r.echeance.numero_echeance }} du {{ r.echeance.date_echeance|date:"d/m/Y" }}</span></td>
-            <td class="nombre"><b>{{ r.du|fcfa_nombre }}</b><br><span class="jours">{{ r.jours }} jour{{ r.jours|pluralize }}</span></td>
+            <td class="nombre"><b>{{ r.du|fcfa_nombre }}</b><br><span class="jours">{{ r.jours }} jour{{ r.jours|s }}</span></td>
           </tr>
         {% endfor %}
       </tbody>
