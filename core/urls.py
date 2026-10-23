@@ -7,6 +7,7 @@ app_name = "core"
 
 urlpatterns = [
     path("", views_scan.accueil, name="accueil"),
+    path("sante/", views.sante, name="sante"),
     path("connexion/", auth_views.LoginView.as_view(template_name="core/connexion.html"), name="connexion"),
     path("deconnexion/", auth_views.LogoutView.as_view(next_page="core:connexion"), name="deconnexion"),
     path("mot-de-passe/", views_compte.mot_de_passe, name="mot_de_passe"),

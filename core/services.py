@@ -14,6 +14,7 @@ Règles appliquées :
 """
 
 import io
+from pathlib import Path
 import re
 from decimal import Decimal
 
@@ -200,7 +201,9 @@ def marquer_envoyes_au_fournisseur(qr_codes):
 # ------------------------------------------------------------------
 
 # Polices avec accents : Arial sous Windows, DejaVu/Liberation sous Linux.
+POLICE_INCLUSE = str(Path(__file__).resolve().parent / "polices" / "DejaVuSans.ttf")   # identique sur le PC et sur Render
 POLICES_CANDIDATES = (
+    POLICE_INCLUSE,
     "arial.ttf",
     "DejaVuSans.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

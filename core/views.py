@@ -38,3 +38,15 @@ def etiquettes_conteneur(request, conteneur_id):
     reponse = HttpResponse(pdf_etiquettes(qr_codes, une_par_balle=une_par_balle), content_type="application/pdf")
     reponse["Content-Disposition"] = f'attachment; filename="etiquettes_{nom}{suffixe}.pdf"'
     return reponse
+
+
+def sante(request):
+    """Page de contrôle : « ok » si l'application et la base de données répondent (utile après une mise en ligne)."""
+    from django.db import connection
+    from django.http import HttpResponse
+    try:
+        with connection.cursor() as c:
+            c.execute("SELECT 1")
+    except Exception:
+        return HttpResponse("base de données injoignable", status=503, content_type="text/plain; charset=utf-8")
+    return HttpResponse("ok", content_type="text/plain; charset=utf-8")

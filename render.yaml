@@ -1,0 +1,34 @@
+# Configuration Render (« Blueprint ») : crée l'application et sa base de données en une fois.
+# Render > New > Blueprint > choisir le dépôt GitHub friplux.
+services:
+  - type: web
+    name: friplux
+    runtime: python
+    region: frankfurt          # le plus proche du Sénégal
+    plan: 0.5c-512mb           # « Starter » : 7 $/mois, ne s'endort jamais
+    buildCommand: bash build.sh
+    preDeployCommand: python manage.py preparer_base
+    startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
+    autoDeploy: true           # chaque « git push » met l'application à jour
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: friplux-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: FRIPLUX_NOM
+        value: "Frip'Lux"
+      - key: FRIPLUX_ADRESSE
+        sync: false            # demandé à la création (ex. Marché Colobane, Dakar)
+      - key: FRIPLUX_TELEPHONE
+        sync: false            # demandé à la création
+
+databases:
+  - name: friplux-db
+    region: frankfurt
+    plan: 0.1c-256mb           # « Basic-256mb » : 6 $/mois, sauvegarde continue (3 jours)
+    databaseName: friplux
+    user: friplux_user

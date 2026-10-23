@@ -4,6 +4,7 @@ le vendeur peut l'envoyer au client par WhatsApp depuis son téléphone, ou l'im
 Mêmes informations que la page facture ; jamais le prix conseillé ni le rabais.
 """
 import io
+from pathlib import Path
 
 from django.utils import timezone
 from PIL import Image, ImageDraw, ImageFont
@@ -15,9 +16,10 @@ LARGEUR, HAUTEUR = 1654, 2339          # A4 à 200 points par pouce
 MARGE = 120
 NOIR, GRIS, VERT, ORANGE, ROUGE, TRAIT = (29, 35, 33), (93, 102, 98), (31, 59, 55), (154, 91, 0), (161, 42, 42), (210, 204, 192)
 
-_NORMAL = ("arial.ttf", "DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+_DOSSIER_POLICES = Path(__file__).resolve().parent / "polices"   # incluses dans le projet : même rendu partout
+_NORMAL = (str(_DOSSIER_POLICES / "DejaVuSans.ttf"), "arial.ttf", "DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf")
-_GRAS = ("arialbd.ttf", "DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+_GRAS = (str(_DOSSIER_POLICES / "DejaVuSans-Bold.ttf"), "arialbd.ttf", "DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
          "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")
 _polices = {}
 

@@ -27,14 +27,24 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("DJANGO_SECRET_KEY est absente du fichier .env")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Sur Render (variable RENDER présente) : mode production. Sur le PC : mode développement.
+# DJANGO_DEBUG=1 ou 0 dans .env permet de forcer l'un ou l'autre.
+EN_PRODUCTION = bool(os.getenv("RENDER"))
+DEBUG = os.getenv("DJANGO_DEBUG", "0" if EN_PRODUCTION else "1") == "1"
 
 # Adresses autorisées. Pour tester depuis un téléphone sur le même Wi-Fi, ajoutez l'adresse IP
 # de l'ordinateur dans .env, par exemple : DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.20
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 # Origines HTTPS autorisées pour les formulaires (ex. tunnel de test, futur domaine)
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
+
+# Adresse attribuée par Render (ex. friplux.onrender.com) et adresse publique éventuelle (ex. https://friplux.sn)
+for _adresse in (os.getenv("RENDER_EXTERNAL_HOSTNAME", ""), os.getenv("FRIPLUX_ADRESSE_PUBLIQUE", "")):
+    _hote = _adresse.strip().rstrip("/").split("://")[-1].split("/")[0]
+    if _hote and _hote not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_hote)
+    if _hote and f"https://{_hote}" not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(f"https://{_hote}")
 
 
 # Application definition
@@ -51,6 +61,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',   # fichiers statiques (scanner, styles) servis par l'application
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -83,16 +94,36 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
+def _base_depuis_url(url):
+    """DATABASE_URL (fournie par Render) -> réglages Django. Ex. postgresql://user:mdp@hote:5432/base"""
+    from urllib.parse import parse_qsl, unquote, urlsplit
+    u = urlsplit(url)
+    return {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+        'NAME': unquote(u.path.lstrip('/')),
+        'USER': unquote(u.username or ''),
+        'PASSWORD': unquote(u.password or ''),
+        'HOST': u.hostname or '',
+        'PORT': str(u.port or 5432),
+        'OPTIONS': dict(parse_qsl(u.query)),
+        'CONN_MAX_AGE': 60,
+        'CONN_HEALTH_CHECKS': True,
     }
-}
+
+
+if os.getenv('DATABASE_URL'):
+    DATABASES = {'default': _base_depuis_url(os.environ['DATABASE_URL'])}
+else:   # sur le PC : réglages DB_* du fichier .env
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME'),
+            'USER': os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+        }
+    }
 
 
 # Password validation
@@ -130,6 +161,32 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'   # rempli par « collectstatic » lors de la mise en ligne
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": ("whitenoise.storage.CompressedManifestStaticFilesStorage" if not DEBUG
+                    else "django.contrib.staticfiles.storage.StaticFilesStorage"),
+    },
+}
+
+# Sécurité en production (HTTPS obligatoire, cookies protégés)
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SECURE_REDIRECT_EXEMPT = [r"^sante/$"]
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "3600"))
+    SECURE_REFERRER_POLICY = "same-origin"
+
+# Journal : les erreurs apparaissent dans les « Logs » de Render
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

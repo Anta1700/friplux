@@ -1,0 +1,54 @@
+# Sauvegarde de la base Frip'Lux (Render) chaque nuit, chiffrée, conservée 30 jours sur GitHub.
+# Deux « secrets » à créer dans GitHub : Settings > Secrets and variables > Actions > New repository secret
+#   RENDER_DATABASE_URL       : l'« External Database URL » de la base (Render > friplux-db > Connect)
+#   SAUVEGARDE_MOT_DE_PASSE   : un long mot de passe, gardé précieusement : sans lui la sauvegarde est illisible
+name: Sauvegarde nocturne
+
+on:
+  schedule:
+    - cron: "0 2 * * *"        # tous les jours à 2 h (heure de Dakar)
+  workflow_dispatch: {}         # bouton « Run workflow » pour lancer une sauvegarde à la main
+
+permissions:
+  contents: read
+
+jobs:
+  sauvegarde:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Vérifier les secrets
+        env:
+          URL: ${{ secrets.RENDER_DATABASE_URL }}
+          MDP: ${{ secrets.SAUVEGARDE_MOT_DE_PASSE }}
+        run: |
+          test -n "$URL" || { echo "Secret RENDER_DATABASE_URL manquant"; exit 1; }
+          test ${#MDP} -ge 16 || { echo "Secret SAUVEGARDE_MOT_DE_PASSE manquant ou trop court (16 caractères minimum)"; exit 1; }
+
+      - name: Copier la base (pg_dump)
+        env:
+          URL: ${{ secrets.RENDER_DATABASE_URL }}
+        run: |
+          # Outils PostgreSQL récents (compatibles avec la version de la base Render)
+          docker run --rm -e URL="$URL" -v "$PWD:/sortie" postgres:18 \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges --dbname="$URL" --file=/sortie/friplux.dump'
+          ls -lh friplux.dump
+          test -s friplux.dump
+
+      - name: Chiffrer
+        env:
+          MDP: ${{ secrets.SAUVEGARDE_MOT_DE_PASSE }}
+        run: |
+          NOM="friplux-$(date -u +%Y-%m-%d).dump.gpg"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$MDP" \
+              --symmetric --cipher-algo AES256 --output "$NOM" friplux.dump
+          rm -f friplux.dump
+          echo "NOM=$NOM" >> "$GITHUB_ENV"
+
+      - name: Conserver 30 jours
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NOM }}
+          path: ${{ env.NOM }}
+          retention-days: 30
+          if-no-files-found: error
