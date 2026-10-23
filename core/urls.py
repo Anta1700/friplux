@@ -23,6 +23,7 @@ urlpatterns = [
     path("ventes/valider/", views_vente.vente_valider, name="vente_valider"),
     path("ventes/client/", views_vente.client_par_telephone, name="client_par_telephone"),
     path("ventes/<int:pk>/", views_vente.vente_detail, name="vente_detail"),
+    path("ventes/<int:pk>/facture.pdf", views_vente.facture_pdf_vue, name="facture_pdf"),
     path("ventes/<int:pk>/encaisser/", views_vente.vente_encaisser, name="vente_encaisser"),
     path("stock/", views_stock.stock, name="stock"),
     path("transferts/envoi/", views_stock.transfert_envoi, name="transfert_envoi"),

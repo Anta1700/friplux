@@ -17,6 +17,7 @@
   .reste b { font-size: 1.25rem; }
   .deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .requis { color: var(--erreur); font-weight: 700; }
+  .modes .large { grid-column: 1 / -1; }
 </style>
 {% endblock %}
 
@@ -37,7 +38,16 @@
 
   <div class="carte">
     <h2>Paiement</h2>
-    <div class="champ montant-paye">
+    <div class="champ">
+      <label>Le client paie</label>
+      <div class="modes">
+        <label><input type="radio" name="reglement" value="tout" {% if reglement == "tout" %}checked{% endif %}><span>Tout maintenant</span></label>
+        <label><input type="radio" name="reglement" value="partie" {% if reglement == "partie" %}checked{% endif %}><span>Une partie maintenant</span></label>
+        <label class="large"><input type="radio" name="reglement" value="rien" {% if reglement == "rien" %}checked{% endif %}><span>Rien maintenant (tout à crédit)</span></label>
+      </div>
+    </div>
+
+    <div class="champ montant-paye" id="bloc-montant">
       <label for="id_montant_paye">{{ formulaire.montant_paye.label }}</label>
       {{ formulaire.montant_paye }}
       {% for e in formulaire.montant_paye.errors %}<div class="erreur-champ">{{ e }}</div>{% endfor %}
@@ -60,7 +70,8 @@
   </div>
 
   <div class="carte cache" id="bloc-moratoire">
-    <h2>Reste à payer plus tard</h2>
+    <h2>Paiement en plusieurs fois (moratoire)</h2>
+    <p class="discret" style="margin-top:-4px">Le reste sera payé plus tard. Le nom et le téléphone du client sont obligatoires.</p>
     <div class="deux">
       <div class="champ">
         <label for="id_nombre_echeances">{{ formulaire.nombre_echeances.label }}</label>
@@ -108,7 +119,18 @@
   function format(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
   function montre(id, oui) { document.getElementById(id).classList.toggle("cache", !oui); }
 
+  function reglement() { var r = document.querySelector("input[name=reglement]:checked"); return r ? r.value : "tout"; }
+  document.querySelectorAll("input[name=reglement]").forEach(function (r) {
+    r.addEventListener("change", function () {
+      if (r.value === "tout") paye.value = format(total);
+      else if (r.value === "rien") paye.value = "0";
+      else { paye.value = ""; paye.focus(); }
+      maj();
+    });
+  });
+
   function maj() {
+    montre("bloc-montant", reglement() === "partie");
     var p = Math.min(chiffres(paye.value), total), reste = total - p;
     montre("bloc-reste", reste > 0);
     montre("bloc-moratoire", reste > 0);

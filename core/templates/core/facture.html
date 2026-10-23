@@ -114,8 +114,61 @@ Tél. {{ societe.telephone }}{% endif %}</div>
   {% if reste and vente.statut == "VALIDEE" %}
     <a class="bouton succes" href="{% url 'core:vente_encaisser' vente.pk %}">Encaisser un paiement</a>
   {% endif %}
-  <button type="button" class="bouton secondaire" onclick="window.print()">🖨 Imprimer / enregistrer en PDF</button>
+
+  <div class="carte" style="margin-top:14px">
+    <h2>Remettre la facture au client</h2>
+    <button type="button" class="bouton succes" id="btn-partager">📲 Envoyer la facture (WhatsApp…)</button>
+    <p class="discret cache" id="aide-partage" role="status"></p>
+    {% if whatsapp %}
+      <a class="bouton secondaire" href="{{ whatsapp }}" target="_blank" rel="noopener">💬 Ouvrir la discussion WhatsApp de {{ vente.client.nom }}</a>
+      <p class="discret" style="margin-top:0">Client absent de vos contacts ? Ouvrez d'abord sa discussion (un message prêt s'affiche), puis revenez ici et envoyez la facture.</p>
+    {% endif %}
+    <button type="button" class="bouton secondaire" onclick="window.print()">🖨 Imprimer</button>
+    <a class="lien-galerie" style="display:block;text-align:center;color:var(--marque);font-weight:600" href="{% url 'core:facture_pdf' vente.pk %}?telecharger=1">⬇ Télécharger le PDF</a>
+  </div>
+
   <a class="bouton" href="{% url 'core:vente_scanner' %}">Nouvelle vente</a>
   {% if user.is_staff %}<a class="bouton secondaire" href="{% url 'admin:core_ventes_change' vente.pk %}">Ouvrir dans l'administration</a>{% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var url = "{% url 'core:facture_pdf' vente.pk %}";
+  var nom = "Facture-{{ facture.numero_facture }}.pdf";
+  var bouton = document.getElementById("btn-partager"), aide = document.getElementById("aide-partage");
+  var fichier = null, enCours = null;
+  var partagePossible = !!(navigator.share && navigator.canShare && window.isSecureContext);
+
+  function preparer() {   // le PDF est préparé d'avance : le partage doit suivre immédiatement le toucher du bouton
+    if (!enCours) {
+      enCours = fetch(url, { credentials: "same-origin" })
+        .then(function (r) { if (!r.ok) throw new Error(); return r.blob(); })
+        .then(function (b) { fichier = new File([b], nom, { type: "application/pdf" }); return fichier; });
+    }
+    return enCours;
+  }
+  function ouvrirPdf(message) {
+    aide.textContent = message;
+    aide.classList.remove("cache");
+    window.location.href = url;
+  }
+  if (partagePossible) preparer().catch(function () {});
+
+  bouton.addEventListener("click", function () {
+    if (!partagePossible) {
+      ouvrirPdf("La facture s'ouvre en PDF : touchez l'icône Partager (le carré avec une flèche), puis WhatsApp et le client.");
+      return;
+    }
+    function partager(f) {
+      if (!navigator.canShare({ files: [f] })) { ouvrirPdf("Touchez Partager, puis WhatsApp."); return; }
+      navigator.share({ files: [f], title: nom, text: "Votre facture {{ facture.numero_facture }} – {{ societe.nom|escapejs }}" })
+        .catch(function (e) { if (e && e.name === "NotAllowedError") ouvrirPdf("Touchez Partager, puis WhatsApp."); });
+    }
+    if (fichier) partager(fichier);
+    else preparer().then(partager).catch(function () { ouvrirPdf("Touchez Partager, puis WhatsApp."); });
+  });
+})();
+</script>
 {% endblock %}

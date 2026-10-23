@@ -7,7 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q, Sum
-from django.http import JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -15,7 +15,8 @@ from django.views.decorators.http import require_POST
 from .models import (
     Clients, Depots, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
 )
-from .montants import entier_fcfa
+from .facture_pdf import facture_pdf
+from .montants import entier_fcfa, format_fcfa
 from .stock import message_balles_ailleurs
 from .stats_ventes import statistiques_ventes as calculer_statistiques_ventes
 from .scans import identifier
@@ -212,6 +213,7 @@ def vente_valider(request):
 
     return render(request, "core/vente_valider.html", {
         "vente": vente, "lignes": vente.lignes.select_related("lot"), "total": total, "formulaire": formulaire,
+        "reglement": request.POST.get("reglement") if request.POST.get("reglement") in ("tout", "partie", "rien") else "tout",
         "balles": sum(l.nombre_balles for l in vente.lignes.all()),
     })
 
@@ -255,7 +257,46 @@ def vente_detail(request, pk):
     vente = _vente_visible_ou_403(request, pk)
     if vente.statut == StatutVente.BROUILLON:
         return redirect("core:ventes")
-    return render(request, "core/facture.html", _contexte_facture(vente))
+    contexte = _contexte_facture(vente)
+    contexte["whatsapp"] = lien_whatsapp(vente, contexte)
+    return render(request, "core/facture.html", contexte)
+
+
+@login_required
+def facture_pdf_vue(request, pk):
+    """La facture en PDF, à envoyer au client (WhatsApp…) ou à imprimer."""
+    vente = _vente_visible_ou_403(request, pk)
+    if vente.statut == StatutVente.BROUILLON:
+        raise Http404
+    contenu = facture_pdf(_contexte_facture(vente))
+    nom = f"Facture-{vente.facture.numero_facture}.pdf"
+    reponse = HttpResponse(contenu, content_type="application/pdf")
+    reponse["Content-Disposition"] = f'{"attachment" if request.GET.get("telecharger") else "inline"}; filename="{nom}"'
+    return reponse
+
+
+def numero_whatsapp(telephone):
+    """Numéro au format international pour WhatsApp : 77 123 45 67 -> 221771234567 (Sénégal par défaut)."""
+    chiffres = "".join(c for c in (telephone or "") if c.isdigit())
+    if (telephone or "").strip().startswith("+") or chiffres.startswith("00"):
+        return chiffres.lstrip("0") or None
+    if len(chiffres) == 9:
+        return "221" + chiffres
+    return chiffres if len(chiffres) > 9 else None
+
+
+def lien_whatsapp(vente, contexte):
+    """Lien qui ouvre la discussion WhatsApp du client avec un message prêt (sans pièce jointe)."""
+    numero = numero_whatsapp(vente.client.telephone) if vente.client_id else None
+    if not numero:
+        return None
+    from urllib.parse import quote
+    message = (f"Bonjour {vente.client.nom}, voici votre facture {vente.facture.numero_facture} "
+               f"de {format_fcfa(vente.montant_total)} FCFA")
+    if contexte["reste"]:
+        message += f" (reste à payer : {format_fcfa(contexte['reste'])} FCFA)"
+    message += f". Merci de votre confiance. {settings.FRIPLUX_SOCIETE['nom']}"
+    return f"https://wa.me/{numero}?text={quote(message)}"
 
 
 class FormulaireEncaissement(forms.Form):
