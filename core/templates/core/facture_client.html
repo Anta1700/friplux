@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% load friplux %}
+{% block titre %}Votre facture {{ facture.numero_facture }}{% endblock %}
+{% block entete %}
+<meta name="robots" content="noindex">
+<style>
+  .societe { font-size: 1.3rem; font-weight: 800; color: var(--marque); }
+  .ligne { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; }
+  .ligne b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+</style>
+{% endblock %}
+{% block contenu %}
+<div class="carte">
+  <div class="societe">{{ societe.nom }}</div>
+  {% if societe.adresse or societe.telephone %}<div class="discret">{{ societe.adresse }}{% if societe.adresse and societe.telephone %} · {% endif %}{% if societe.telephone %}Tél. {{ societe.telephone }}{% endif %}</div>{% endif %}
+  <h1 style="margin:14px 0 4px">Votre facture</h1>
+  <div class="discret">{{ facture.numero_facture }} · {{ facture.date_facture|date:"d/m/Y" }}</div>
+  {% if vente.client %}<p style="margin:10px 0 0">{{ vente.client.nom }}</p>{% endif %}
+</div>
+
+<div class="carte">
+  {% for l in lignes %}
+    <div class="ligne"><span>{{ l.nombre_balles }} × {{ l.designation }}</span><b>{{ l.montant_ligne|fcfa }}</b></div>
+  {% endfor %}
+  <div class="ligne" style="border-top:2px solid var(--marque);margin-top:6px;padding-top:10px"><span>Total</span><span class="gros-total" style="font-size:1.5rem">{{ vente.montant_total|fcfa }}</span></div>
+  {% if vente.statut == "ANNULEE" %}<p><span class="pastille erreur">Facture annulée</span></p>
+  {% elif reste %}<div class="ligne"><span>Déjà payé</span><b>{{ paye|fcfa }}</b></div>
+    <div class="ligne" style="color:var(--erreur)"><span>Reste à payer</span><b>{{ reste|fcfa }}</b></div>
+  {% else %}<p style="margin-bottom:0"><span class="pastille ok">Payée</span></p>{% endif %}
+</div>
+
+<a class="bouton succes" href="{% url 'core:facture_client_pdf' facture.jeton_public %}">📄 Ouvrir et enregistrer ma facture (PDF)</a>
+<p class="discret" style="text-align:center">Gardez ce lien : il vous permet de retrouver votre facture à tout moment.</p>
+<p class="discret" style="text-align:center">Merci de votre confiance.</p>
+{% endblock %}

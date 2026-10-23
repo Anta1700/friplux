@@ -30,7 +30,11 @@
   .tampon.erreur { color: var(--erreur); }
   .retard { color: var(--erreur); font-weight: 700; }
   .pied { margin-top: 18px; text-align: center; color: var(--doux); font-size: .85rem; }
-  @media print { .facture { border: 0; padding: 0; } @page { margin: 12mm; } }
+  .qr-impression { display: none; align-items: center; gap: 12px; margin-top: 16px; color: var(--doux); font-size: .85rem; }
+  .qr-client { text-align: center; margin-bottom: 8px; }
+  .qr-client img { display: block; margin: 0 auto 6px; image-rendering: pixelated; border: 1px solid var(--ligne); border-radius: 10px; }
+  .qr-client p { margin: 4px 0; }
+  @media print { .facture { border: 0; padding: 0; } .qr-impression { display: flex; } @page { margin: 12mm; } }
 </style>
 {% endblock %}
 
@@ -107,6 +111,12 @@ Tél. {{ societe.telephone }}{% endif %}</div>
     </table>
   {% endif %}
 
+  {% if lien_public_actif %}
+  <div class="qr-impression">
+    <img src="{{ qr_facture }}" alt="QR code de la facture" width="110" height="110">
+    <span>Scannez ce code avec votre téléphone pour retrouver votre facture.</span>
+  </div>
+  {% endif %}
   <p class="pied">Merci de votre confiance.</p>
 </div>
 
@@ -117,6 +127,18 @@ Tél. {{ societe.telephone }}{% endif %}</div>
 
   <div class="carte" style="margin-top:14px">
     <h2>Remettre la facture au client</h2>
+    {% if lien_public_actif %}
+    <div class="qr-client">
+      <img src="{{ qr_facture }}" alt="QR code à scanner par le client" width="220" height="220">
+      <p><b>Le client scanne ce code</b> avec l'appareil photo de son téléphone : sa facture s'ouvre et il peut l'enregistrer.</p>
+      {% if adresse_locale %}
+        <div class="message warning" style="text-align:left">Ce code contient l'adresse « localhost » : il ne marchera pas sur le téléphone du client.
+          Ouvrez Frip'Lux avec l'adresse de l'ordinateur (ex. 192.168.1.12:8000), ou renseignez FRIPLUX_ADRESSE_PUBLIQUE.</div>
+      {% else %}
+        <p class="discret">Tant que Frip'Lux n'est pas en ligne, le téléphone du client doit être sur le même Wi-Fi.</p>
+      {% endif %}
+    </div>
+    {% endif %}
     <button type="button" class="bouton succes" id="btn-partager">📲 Envoyer la facture (WhatsApp…)</button>
     <p class="discret cache" id="aide-partage" role="status"></p>
     {% if whatsapp %}

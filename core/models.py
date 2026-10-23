@@ -374,6 +374,11 @@ class Factures(models.Model):
     montant_total = models.DecimalField("montant (FCFA)", max_digits=15, decimal_places=2)
     statut = models.CharField(max_length=30, choices=StatutFacture.choices, default=StatutFacture.EMISE)
     fichier_pdf = models.TextField(blank=True, null=True)
+    jeton_public = models.CharField("lien secret", max_length=64, blank=True, null=True, unique=True, editable=False)
+    lien_public_actif = models.BooleanField(
+        "lien client actif", default=True,
+        help_text="Décocher pour que le QR code / lien de cette facture ne fonctionne plus.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

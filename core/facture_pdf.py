@@ -205,6 +205,20 @@ def facture_pdf(contexte):
             p.texte(col_montant, etat, 28, couleur=ROUGE if e.en_retard else NOIR, aligne="droite")
             p.y += 44
 
+    lien = contexte.get("lien_public")
+    if lien:
+        from .facture_publique import qr_png
+        qr = qr_png(lien, taille_case=8)
+        cote = 260
+        qr = qr.resize((cote, cote), Image.NEAREST)
+        p.place(cote + 60)
+        p.y += 30
+        p.image.paste(qr, (MARGE, p.y))
+        texte_y = p.y + cote // 2 - 50
+        p.texte(MARGE + cote + 30, "Retrouvez votre facture sur votre téléphone :", 28, gras=True, y=texte_y)
+        p.texte(MARGE + cote + 30, "scannez ce code avec l'appareil photo.", 28, couleur=GRIS, y=texte_y + 44)
+        p.y += cote
+
     p.place(80)
     p.y += 40
     p.texte(LARGEUR // 2, "Merci de votre confiance.", 26, couleur=GRIS, aligne="centre")

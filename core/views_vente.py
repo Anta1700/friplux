@@ -13,9 +13,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .models import (
-    Clients, Depots, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
+    Clients, Depots, Factures, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
 )
 from .facture_pdf import facture_pdf
+from .facture_publique import adresse_locale, lien_public, qr_data_uri
 from .montants import entier_fcfa, format_fcfa
 from .stock import message_balles_ailleurs
 from .stats_ventes import statistiques_ventes as calculer_statistiques_ventes
@@ -258,6 +259,11 @@ def vente_detail(request, pk):
     if vente.statut == StatutVente.BROUILLON:
         return redirect("core:ventes")
     contexte = _contexte_facture(vente)
+    lien = lien_public(request, vente.facture)
+    contexte.update({
+        "lien_public": lien, "qr_facture": qr_data_uri(lien), "adresse_locale": adresse_locale(request),
+        "lien_public_actif": vente.facture.lien_public_actif,
+    })
     contexte["whatsapp"] = lien_whatsapp(vente, contexte)
     return render(request, "core/facture.html", contexte)
 
@@ -268,7 +274,9 @@ def facture_pdf_vue(request, pk):
     vente = _vente_visible_ou_403(request, pk)
     if vente.statut == StatutVente.BROUILLON:
         raise Http404
-    contenu = facture_pdf(_contexte_facture(vente))
+    contexte = _contexte_facture(vente)
+    contexte["lien_public"] = lien_public(request, vente.facture) if vente.facture.lien_public_actif else None
+    contenu = facture_pdf(contexte)
     nom = f"Facture-{vente.facture.numero_facture}.pdf"
     reponse = HttpResponse(contenu, content_type="application/pdf")
     reponse["Content-Disposition"] = f'{"attachment" if request.GET.get("telecharger") else "inline"}; filename="{nom}"'
@@ -295,7 +303,10 @@ def lien_whatsapp(vente, contexte):
                f"de {format_fcfa(vente.montant_total)} FCFA")
     if contexte["reste"]:
         message += f" (reste à payer : {format_fcfa(contexte['reste'])} FCFA)"
-    message += f". Merci de votre confiance. {settings.FRIPLUX_SOCIETE['nom']}"
+    message += "."
+    if contexte.get("lien_public") and contexte.get("lien_public_actif") and not contexte.get("adresse_locale"):
+        message += f" Votre facture : {contexte['lien_public']}"
+    message += f" Merci de votre confiance. {settings.FRIPLUX_SOCIETE['nom']}"
     return f"https://wa.me/{numero}?text={quote(message)}"
 
 
@@ -387,3 +398,35 @@ def statistiques_ventes(request):
                         "actif": criteres.get("date_debut") == d and criteres.get("date_fin") == f} for n, d, f in raccourcis],
         "tous_depots": request.user.is_staff and not criteres.get("depot"),
     })
+
+
+# ------------------------------------------------------------------
+# Facture côté client (lien secret du QR code, sans compte)
+# ------------------------------------------------------------------
+
+def _facture_par_jeton(jeton):
+    facture = (Factures.objects.select_related("vente__client", "vente__depot", "vente__vendeur")
+               .filter(jeton_public=jeton, lien_public_actif=True).first())
+    if facture is None or facture.vente.statut == StatutVente.BROUILLON:
+        raise Http404
+    return facture
+
+
+def facture_client(request, jeton):
+    """Page ouverte par le client en scannant le QR code : résumé et bouton pour enregistrer le PDF."""
+    try:
+        facture = _facture_par_jeton(jeton)
+    except Http404:
+        return render(request, "core/facture_client_introuvable.html", status=404)
+    contexte = _contexte_facture(facture.vente)
+    return render(request, "core/facture_client.html", contexte)
+
+
+def facture_client_pdf(request, jeton):
+    facture = _facture_par_jeton(jeton)
+    contexte = _contexte_facture(facture.vente)
+    contexte["lien_public"] = lien_public(request, facture)
+    reponse = HttpResponse(facture_pdf(contexte), content_type="application/pdf")
+    reponse["Content-Disposition"] = f'inline; filename="Facture-{facture.numero_facture}.pdf"'
+    reponse["X-Robots-Tag"] = "noindex"
+    return reponse

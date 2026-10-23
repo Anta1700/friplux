@@ -869,8 +869,19 @@ class PaiementsAdmin(LectureSeuleMixin, admin.ModelAdmin):
 
 @admin.register(Factures)
 class FacturesAdmin(LectureSeuleMixin, admin.ModelAdmin):
-    list_display = ("numero_facture", "date_facture", "vente", "montant_total", "statut", "voir")
-    list_filter = ("statut", ("date_facture", admin.DateFieldListFilter))
+    list_display = ("numero_facture", "date_facture", "vente", "montant_total", "statut", "lien_public_actif", "voir")
+    list_filter = ("statut", "lien_public_actif", ("date_facture", admin.DateFieldListFilter))
+    actions = ("desactiver_lien", "reactiver_lien")
+
+    @admin.action(description="Désactiver le lien client (le QR code de la facture ne marchera plus)")
+    def desactiver_lien(self, request, queryset):
+        n = queryset.update(lien_public_actif=False)
+        self.message_user(request, f"{n} lien(s) client désactivé(s).", messages.SUCCESS)
+
+    @admin.action(description="Réactiver le lien client")
+    def reactiver_lien(self, request, queryset):
+        n = queryset.update(lien_public_actif=True)
+        self.message_user(request, f"{n} lien(s) client réactivé(s).", messages.SUCCESS)
     search_fields = ("numero_facture", "vente__numero_vente", "vente__client__nom")
     list_select_related = ("vente",)
 

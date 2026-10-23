@@ -47,6 +47,7 @@ from .models import (
     TypeClient,
     Ventes,
 )
+from .facture_publique import nouveau_jeton
 from .montants import entier_fcfa
 from .stock import balles_dans_depot, message_balles_ailleurs, stock_balles
 
@@ -369,6 +370,7 @@ def valider_vente(
         date_facture=maintenant,
         montant_total=total,
         statut=StatutFacture.PAYEE if reste == 0 else StatutFacture.EMISE,
+        jeton_public=nouveau_jeton(),
     )
 
     if paye > 0:

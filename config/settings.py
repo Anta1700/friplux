@@ -205,3 +205,7 @@ FRIPLUX_SOCIETE = {
     "adresse": os.getenv("FRIPLUX_ADRESSE", ""),
     "telephone": os.getenv("FRIPLUX_TELEPHONE", ""),
 }
+
+# Adresse de Frip'Lux vue depuis Internet, pour le QR code des factures (ex. https://friplux.sn).
+# Vide : on utilise l'adresse avec laquelle le vendeur a ouvert la page (ex. http://192.168.1.12:8000).
+FRIPLUX_ADRESSE_PUBLIQUE = os.getenv("FRIPLUX_ADRESSE_PUBLIQUE", "").strip().rstrip("/")
