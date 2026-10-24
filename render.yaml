@@ -9,7 +9,7 @@ services:
     buildCommand: bash build.sh
     preDeployCommand: python manage.py preparer_base
     startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 60
-    autoDeploy: true           # chaque « git push » met l'application à jour
+    autoDeployTrigger: commit  # chaque « git push » met l'application à jour
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.11"
