@@ -130,12 +130,10 @@ Tél. {{ societe.telephone }}{% endif %}</div>
     {% if lien_public_actif %}
     <div class="qr-client">
       <img src="{{ qr_facture }}" alt="QR code à scanner par le client" width="220" height="220">
-      <p><b>Le client scanne ce code</b> avec l'appareil photo de son téléphone : sa facture s'ouvre et il peut l'enregistrer.</p>
+      <p><b>Le client scanne ce code</b> avec son téléphone.</p>
       {% if adresse_locale %}
         <div class="message warning" style="text-align:left">Ce code contient l'adresse « localhost » : il ne marchera pas sur le téléphone du client.
           Ouvrez Frip'Lux avec l'adresse de l'ordinateur (ex. 192.168.1.12:8000), ou renseignez FRIPLUX_ADRESSE_PUBLIQUE.</div>
-      {% else %}
-        <p class="discret">Tant que Frip'Lux n'est pas en ligne, le téléphone du client doit être sur le même Wi-Fi.</p>
       {% endif %}
     </div>
     {% endif %}
@@ -143,7 +141,6 @@ Tél. {{ societe.telephone }}{% endif %}</div>
     <p class="discret cache" id="aide-partage" role="status"></p>
     {% if whatsapp %}
       <a class="bouton secondaire" href="{{ whatsapp }}" target="_blank" rel="noopener">💬 Ouvrir la discussion WhatsApp de {{ vente.client.nom }}</a>
-      <p class="discret" style="margin-top:0">Client absent de vos contacts ? Ouvrez d'abord sa discussion (un message prêt s'affiche), puis revenez ici et envoyez la facture.</p>
     {% endif %}
     <button type="button" class="bouton secondaire" onclick="window.print()">🖨 Imprimer</button>
     <a class="lien-galerie" style="display:block;text-align:center;color:var(--marque);font-weight:600" href="{% url 'core:facture_pdf' vente.pk %}?telecharger=1">⬇ Télécharger le PDF</a>
