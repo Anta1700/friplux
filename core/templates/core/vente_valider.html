@@ -18,6 +18,9 @@
   .deux { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .requis { color: var(--erreur); font-weight: 700; }
   .modes .large { grid-column: 1 / -1; }
+  .modes.trois { grid-template-columns: 1fr 1fr 1fr; }
+  .modes.trois label { display: flex; }
+  .modes.trois span { flex: 1; display: flex; align-items: center; justify-content: center; }
 </style>
 {% endblock %}
 
@@ -56,7 +59,7 @@
 
     <div class="champ" id="bloc-mode">
       <label>{{ formulaire.mode_paiement.label }}</label>
-      <div class="modes">
+      <div class="modes trois">
         {% for radio in formulaire.mode_paiement %}
           <label>{{ radio.tag }}<span>{{ radio.choice_label }}</span></label>
         {% endfor %}
@@ -66,6 +69,7 @@
     <div class="champ cache" id="bloc-reference">
       <label for="id_reference">{{ formulaire.reference.label }}</label>
       {{ formulaire.reference }}
+      <div class="discret">{{ formulaire.reference.help_text }}</div>
     </div>
   </div>
 
@@ -97,9 +101,13 @@
       <label for="id_client_telephone">{{ formulaire.client_telephone.label }}</label>
       {{ formulaire.client_telephone }}
     </div>
-    <div class="champ" style="margin-bottom:0">
+    <div class="champ">
       <label for="id_client_nom">{{ formulaire.client_nom.label }}</label>
       {{ formulaire.client_nom }}
+    </div>
+    <div class="champ" style="margin-bottom:0">
+      <label for="id_client_piece">{{ formulaire.client_piece.label }} <span class="discret">(facultatif)</span></label>
+      {{ formulaire.client_piece }}
       <div class="discret">Laissez vide pour un client de passage.</div>
     </div>
   </div>
@@ -114,6 +122,7 @@
   var total = {{ total }};
   var paye = document.getElementById("id_montant_paye");
   var tel = document.getElementById("id_client_telephone"), nom = document.getElementById("id_client_nom");
+  var piece = document.getElementById("id_client_piece");
   var nb = document.getElementById("id_nombre_echeances");
   function chiffres(v) { return parseInt(String(v).replace(/\D/g, ""), 10) || 0; }
   function format(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
@@ -149,12 +158,15 @@
   nb.addEventListener("change", maj);
   document.querySelectorAll("input[name=mode_paiement]").forEach(function (r) { r.addEventListener("change", maj); });
 
-  // Client connu : son nom se remplit tout seul à partir du téléphone.
+  // Client connu : son nom et sa carte d'identité se remplissent tout seuls à partir du téléphone.
   tel.addEventListener("change", function () {
-    if (nom.value.trim()) return;
+    if (nom.value.trim() && piece.value.trim()) return;
     fetch("{% url 'core:client_par_telephone' %}?telephone=" + encodeURIComponent(tel.value), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d.nom && !nom.value.trim()) nom.value = d.nom; })
+      .then(function (d) {
+        if (d.nom && !nom.value.trim()) nom.value = d.nom;
+        if (d.piece && !piece.value.trim()) piece.value = d.piece;
+      })
       .catch(function () {});
   });
 

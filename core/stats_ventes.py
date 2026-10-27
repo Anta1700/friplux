@@ -15,7 +15,7 @@ from django.db.models import Count, DecimalField, OuterRef, Q, Subquery, Sum, Va
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .models import EcheancesMoratoire, LignesVente, ModePaiement, Paiements, StatutPaiement, StatutVente
+from .models import CHOIX_MODES_PAIEMENT, EcheancesMoratoire, LignesVente, ModePaiement, Paiements, StatutPaiement, StatutVente
 from .montants import entier_fcfa
 
 ZERO = Value(Decimal("0"), output_field=DecimalField(max_digits=15, decimal_places=2))
@@ -101,7 +101,7 @@ def statistiques_ventes(ventes_visibles, date_debut=None, date_fin=None, depot=N
 
     # --- Encaissé par moyen de paiement ------------------------------------------
     libelles = dict(ModePaiement.choices)
-    par_mode = {code: {"nom": libelle, "nombre": 0, "montant": 0} for code, libelle in ModePaiement.choices}
+    par_mode = {code: {"nom": libelle, "nombre": 0, "montant": 0} for code, libelle in CHOIX_MODES_PAIEMENT}
     for mode, nombre, montant in paiements.values("mode_paiement").annotate(n=Count("id"), t=Sum("montant")).values_list(
         "mode_paiement", "n", "t"
     ):

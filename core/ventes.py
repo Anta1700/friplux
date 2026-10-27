@@ -35,6 +35,7 @@ from .models import (
     Factures,
     LignesVente,
     Lots,
+    MODES_PAIEMENT_PROPOSES,
     ModePaiement,
     Moratoires,
     Paiements,
@@ -260,23 +261,36 @@ def normaliser_telephone(telephone):
     return ("+" if plus else "") + chiffres
 
 
-def trouver_ou_creer_client(nom, telephone):
+def normaliser_piece(numero):
+    """« 1 234 5678 90123 » -> « 1234567890123 » (espaces retirés, lettres en majuscules)."""
+    return "".join((numero or "").split()).upper()
+
+
+def trouver_ou_creer_client(nom, telephone, piece_identite=""):
     """Client retrouvé par son téléphone, sinon créé. Rien saisi -> None (client de passage)."""
     nom = " ".join((nom or "").split())
     telephone = normaliser_telephone(telephone)
-    if not nom and not telephone:
+    piece = normaliser_piece(piece_identite)
+    if not nom and not telephone and not piece:
         return None
     if telephone:
         client = Clients.objects.filter(telephone=telephone).order_by("id").first()
         if client:
+            champs = []
             if nom and nom != client.nom:
                 client.nom = nom
-                client.save(update_fields=["nom", "updated_at"])
+                champs.append("nom")
+            if piece and piece != client.numero_piece_identite:
+                client.numero_piece_identite = piece
+                champs.append("numero_piece_identite")
+            if champs:
+                client.save(update_fields=champs + ["updated_at"])
             return client
     with connection.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", [CLE_VERROU_CLIENTS])
     client = Clients.objects.create(
-        nom=nom or telephone, telephone=telephone or None, type_client=TypeClient.PARTICULIER, actif=True
+        nom=nom or telephone or piece, telephone=telephone or None, numero_piece_identite=piece or None,
+        type_client=TypeClient.PARTICULIER, actif=True,
     )
     client.code_client = f"CLI-{client.pk:06d}"
     client.save(update_fields=["code_client"])
@@ -317,6 +331,7 @@ def valider_vente(
     *,
     client_nom="",
     client_telephone="",
+    client_piece="",
     montant_paye=None,
     mode_paiement=ModePaiement.ESPECES,
     reference="",
@@ -337,7 +352,7 @@ def valider_vente(
     paye = total if montant_paye in (None, "") else _entier_positif(montant_paye, "Montant payé")
     if paye > total:
         raise ErreurVente("Le montant payé dépasse le total de la vente.")
-    if paye > 0 and mode_paiement not in ModePaiement.values:
+    if paye > 0 and mode_paiement not in MODES_PAIEMENT_PROPOSES:
         raise ErreurVente("Choisissez le moyen de paiement.")
     reste = total - paye
 
@@ -354,7 +369,7 @@ def valider_vente(
         if date_premiere_echeance < aujourd_hui:
             raise ErreurVente("La première échéance ne peut pas être dans le passé.")
 
-    client = trouver_ou_creer_client(client_nom, client_telephone)
+    client = trouver_ou_creer_client(client_nom, client_telephone, client_piece)
     maintenant = timezone.now()
 
     vente.numero_vente = _prochain_numero(Ventes, "numero_vente", PREFIXE_VENTE, CLE_VERROU_VENTES)
@@ -434,7 +449,7 @@ def encaisser(utilisateur, vente, montant, mode_paiement, reference=""):
         raise ErreurVente("Indiquez le montant reçu.")
     if montant > reste:
         raise ErreurVente(f"Le montant dépasse le reste à payer ({reste:,} FCFA).".replace(",", "\u202f"))
-    if mode_paiement not in ModePaiement.values:
+    if mode_paiement not in MODES_PAIEMENT_PROPOSES:
         raise ErreurVente("Choisissez le moyen de paiement.")
 
     paiement = Paiements.objects.create(

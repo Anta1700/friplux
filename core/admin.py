@@ -303,6 +303,7 @@ class ClientsAdmin(admin.ModelAdmin):
         "code_client",
         "nom",
         "telephone",
+        "numero_piece_identite",
         "type_client",
         "actif",
     )
@@ -316,6 +317,7 @@ class ClientsAdmin(admin.ModelAdmin):
         "code_client",
         "nom",
         "telephone",
+        "numero_piece_identite",
         "email",
     )
     readonly_fields = (

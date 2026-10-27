@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .models import (
-    Clients, Depots, Factures, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
+    CHOIX_MODES_PAIEMENT, Clients, Depots, Factures, User, Lots, ModePaiement, Paiements, ResultatScan, StatutFacture, StatutPaiement, StatutVente, Ventes,
 )
 from .facture_pdf import facture_pdf
 from .facture_publique import adresse_locale, lien_public, qr_data_uri
@@ -172,11 +172,16 @@ class FormulaireValidation(forms.Form):
         label="Téléphone", required=False, max_length=30,
         widget=forms.TextInput(attrs={"inputmode": "tel", "autocomplete": "off"}),
     )
+    client_piece = forms.CharField(
+        label="N° de carte d'identité", required=False, max_length=50,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "autocapitalize": "characters"}),
+    )
     montant_paye = forms.CharField(label="Montant payé maintenant (FCFA)", widget=forms.TextInput(attrs=CHAMP_MONTANT))
     mode_paiement = forms.ChoiceField(
-        label="Moyen de paiement", choices=ModePaiement.choices, initial=ModePaiement.ESPECES, widget=forms.RadioSelect
+        label="Moyen de paiement", choices=CHOIX_MODES_PAIEMENT, initial=ModePaiement.ESPECES, widget=forms.RadioSelect
     )
-    reference = forms.CharField(label="N° de transaction (facultatif)", required=False, max_length=100)
+    reference = forms.CharField(label="N° de transaction (facultatif)", required=False, max_length=100,
+                                help_text="Le code reçu par SMS de Wave ou Orange Money après le paiement.")
     nombre_echeances = forms.IntegerField(label="Payer le reste en", min_value=1, max_value=MAX_ECHEANCES, initial=1)
     date_premiere_echeance = forms.DateField(
         label="Première échéance le", required=False, widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
@@ -198,7 +203,7 @@ def vente_valider(request):
             try:
                 vente = valider_vente(
                     request.user,
-                    client_nom=d["client_nom"], client_telephone=d["client_telephone"],
+                    client_nom=d["client_nom"], client_telephone=d["client_telephone"], client_piece=d["client_piece"],
                     montant_paye=d["montant_paye"], mode_paiement=d["mode_paiement"], reference=d["reference"],
                     nombre_echeances=d["nombre_echeances"], date_premiere_echeance=d["date_premiere_echeance"],
                 )
@@ -221,10 +226,10 @@ def vente_valider(request):
 
 @login_required
 def client_par_telephone(request):
-    """Remplit le nom quand le téléphone d'un client connu est saisi."""
+    """Remplit le nom et la carte d'identité quand le téléphone d'un client connu est saisi."""
     telephone = normaliser_telephone(request.GET.get("telephone", ""))
     client = Clients.objects.filter(telephone=telephone).order_by("id").first() if len(telephone) >= 6 else None
-    return JsonResponse({"nom": client.nom if client else ""})
+    return JsonResponse({"nom": client.nom if client else "", "piece": (client.numero_piece_identite or "") if client else ""})
 
 
 # ------------------------------------------------------------------
@@ -313,9 +318,10 @@ def lien_whatsapp(vente, contexte):
 class FormulaireEncaissement(forms.Form):
     montant = forms.CharField(label="Montant reçu (FCFA)", widget=forms.TextInput(attrs=CHAMP_MONTANT))
     mode_paiement = forms.ChoiceField(
-        label="Moyen de paiement", choices=ModePaiement.choices, initial=ModePaiement.ESPECES, widget=forms.RadioSelect
+        label="Moyen de paiement", choices=CHOIX_MODES_PAIEMENT, initial=ModePaiement.ESPECES, widget=forms.RadioSelect
     )
-    reference = forms.CharField(label="N° de transaction (facultatif)", required=False, max_length=100)
+    reference = forms.CharField(label="N° de transaction (facultatif)", required=False, max_length=100,
+                                help_text="Le code reçu par SMS de Wave ou Orange Money après le paiement.")
 
 
 @login_required

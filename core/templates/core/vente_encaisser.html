@@ -5,10 +5,10 @@
 
 {% block entete %}
 <style>
-  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .modes label { margin: 0; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .modes label { margin: 0; display: flex; }
   .modes input { position: absolute; opacity: 0; pointer-events: none; }
-  .modes span { display: block; text-align: center; padding: 13px 6px; border: 2px solid #cfc8b9; border-radius: 12px; font-weight: 650; background: #fff; cursor: pointer; }
+  .modes span { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; padding: 13px 6px; border: 2px solid #cfc8b9; border-radius: 12px; font-weight: 650; background: #fff; cursor: pointer; }
   .modes input:checked + span { border-color: var(--marque); background: var(--marque); color: #fff; }
   .montant input { font-size: 1.4rem; font-weight: 700; }
   .ligne { display: flex; justify-content: space-between; padding: 4px 0; }
@@ -47,6 +47,7 @@
   <div class="champ cache" id="bloc-reference">
     <label for="id_reference">{{ formulaire.reference.label }}</label>
     {{ formulaire.reference }}
+    <div class="discret">{{ formulaire.reference.help_text }}</div>
   </div>
   <button type="submit" class="bouton succes" id="btn-encaisser">Enregistrer le paiement</button>
 </form>

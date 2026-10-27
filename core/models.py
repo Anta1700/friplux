@@ -274,6 +274,7 @@ class Clients(models.Model):
     code_client = models.CharField("code client", unique=True, max_length=50, blank=True, null=True)
     nom = models.CharField(max_length=150)
     telephone = models.CharField("téléphone", max_length=30, blank=True, null=True)
+    numero_piece_identite = models.CharField("n° de carte d'identité", max_length=50, blank=True, null=True)
     email = models.CharField(max_length=254, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     type_client = models.CharField("type", max_length=30, choices=TypeClient.choices, default=TypeClient.PARTICULIER)
@@ -856,6 +857,12 @@ class ModePaiement(models.TextChoices):
     ORANGE_MONEY = "ORANGE_MONEY", "Orange Money"
     VIREMENT = "VIREMENT", "Virement"
     CHEQUE = "CHEQUE", "Chèque"
+
+
+# Moyens proposés aux vendeurs. Virement et Chèque ne sont plus proposés, mais restent connus
+# pour afficher correctement les anciens paiements.
+MODES_PAIEMENT_PROPOSES = (ModePaiement.ESPECES, ModePaiement.WAVE, ModePaiement.ORANGE_MONEY)
+CHOIX_MODES_PAIEMENT = [(m.value, m.label) for m in MODES_PAIEMENT_PROPOSES]
 
 
 class StatutPaiement(models.TextChoices):
