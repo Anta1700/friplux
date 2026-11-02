@@ -651,7 +651,10 @@ class Lots(models.Model):
         "poids total (kg)",
         max_digits=10,
         decimal_places=2,
+        blank=True,
+        null=True,
         validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Vide si la fiche fournisseur ne donne pas le poids.",
     )
 
     prix_achat = models.DecimalField(

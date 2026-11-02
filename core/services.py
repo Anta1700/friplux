@@ -264,8 +264,10 @@ def image_etiquette(qr_code):
     textes.append((classement, 24))
     if lot.nombre_balles > 1:
         # Le même QR est collé sur toutes les balles du lot.
-        poids = format(Decimal(lot.poids_kg).normalize(), "f").replace(".", ",")
-        textes.append((f"Lot de {lot.nombre_balles} balles · {poids} kg · à coller sur chaque balle", 22))
+        texte = f"Lot de {lot.nombre_balles} balles"
+        if lot.poids_kg:
+            texte += " · " + format(Decimal(lot.poids_kg).normalize(), "f").replace(".", ",") + " kg"
+        textes.append((texte, 22))
     textes.append((f"Conteneur {lot.conteneur}", 22))
     if qr_code.version > 1:
         textes.append((f"Étiquette version {qr_code.version}", 20))
@@ -347,7 +349,7 @@ def importer_fiche(conteneur, date_fiche, lignes, classements):
             code=ligne.code,
             defaults=valeurs,
         )
-        poids_total = Decimal(ligne.poids_total)
+        poids_total = ligne.poids()
         # Un lot par ligne de la fiche : toutes les balles de la ligne partagent
         # le même code et le même QR code (ex. 9 balles « déstockage été »).
         lots.append(
@@ -363,7 +365,8 @@ def importer_fiche(conteneur, date_fiche, lignes, classements):
                 date_creation=aujourd_hui,
                 notes=(
                     f"Fiche fournisseur du {date_fiche or '?'}, article {ligne.code} : "
-                    f"{ligne.nombre_balles} balle(s), {ligne.poids_total} kg. "
+                    f"{ligne.nombre_balles} balle(s), "
+                    + (f"{ligne.poids_total} kg. " if poids_total else "poids non indiqué. ")
                     + (f"Prix d'achat calculé en EUR ({ligne.prix_kg} €/kg)." if Decimal(ligne.prix_kg or 0)
                        else "Prix d'achat non indiqué sur la fiche.")
                 ),

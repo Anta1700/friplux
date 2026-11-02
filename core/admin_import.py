@@ -51,7 +51,7 @@ class FormulaireLigne(forms.Form):
         required=False,
         label="Sous-catégorie",
     )
-    qualite = forms.ModelChoiceField(queryset=Qualites.objects.filter(actif=True), label="Qualité")
+    qualite = forms.ModelChoiceField(queryset=Qualites.objects.filter(actif=True), label="Qualité", required=False)
 
     def clean(self):
         donnees = super().clean()
@@ -128,7 +128,7 @@ def _classement_initial(lignes, fournisseur):
             "categorie_produit": sous_categorie.pk if sous_categorie and sous_categorie.actif else None,
             "qualite": qualite.pk if qualite else None,
         })
-        statuts.append("proposee" if categorie and qualite else "a_classer")
+        statuts.append("proposee" if categorie else "a_classer")
     return initial, statuts
 
 
@@ -211,7 +211,8 @@ def vue_apercu(modeladmin, request):
             rangees=rangees,
             nombre_lots=len(lignes),
             nombre_balles=sum(l.nombre_balles for l in lignes),
-            poids_total=sum(float(l.poids_total) for l in lignes),
+            poids_total=sum(float(l.poids() or 0) for l in lignes),
+            lignes_sans_poids=sum(1 for l in lignes if not l.poids()),
             alertes_bloquantes=alertes_bloquantes,
             avertissements=avertissements,
             total_statuts=total_statuts,

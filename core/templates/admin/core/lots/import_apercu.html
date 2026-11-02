@@ -40,7 +40,7 @@
     <div>Date de la fiche<strong>{{ donnees.date|default:"—" }}</strong></div>
     <div>Lots à créer (QR codes)<strong>{{ nombre_lots }}</strong></div>
     <div>Balles<strong>{{ nombre_balles }}</strong></div>
-    <div>Poids total<strong>{{ poids_total|floatformat:0 }} kg</strong></div>
+    <div>Poids total<strong>{{ poids_total|floatformat:0 }} kg</strong>{% if lignes_sans_poids %}<span class="help">sans le poids de {{ lignes_sans_poids }} ligne(s) non indiqué</span>{% endif %}</div>
   </div>
 
   <p>
@@ -79,7 +79,7 @@
               <td>{{ r.ligne.code }}</td>
               <td>{{ r.ligne.libelle }}{% if r.ligne.traduction %}<br><span class="help">{{ r.ligne.traduction }}</span>{% endif %}</td>
               <td class="nombre">{{ r.ligne.nombre_balles }}</td>
-              <td class="nombre">{{ r.ligne.poids_total }}</td>
+              <td class="nombre">{{ r.ligne.poids_total|default:"—" }}</td>
               <td class="nombre">{{ r.ligne.prix_kg }}</td>
               <td>{{ r.form.categorie_lot.errors }}{{ r.form.categorie_lot }}</td>
               <td>{{ r.form.categorie_produit.errors }}{{ r.form.categorie_produit }}</td>

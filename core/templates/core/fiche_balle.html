@@ -61,7 +61,7 @@
     <dt>Référence</dt>
     <dd>{% if lot.reference_fournisseur %}{{ lot.reference_fournisseur }}{% else %}<span class="vide">Non renseignée</span>{% endif %}</dd>
     <dt>Poids total</dt>
-    <dd>{{ lot.poids_kg }} kg{% if lot.nombre_balles > 1 %}<br><span class="discret">environ {{ lot.poids_moyen_balle }} kg par balle</span>{% endif %}</dd>
+    <dd>{% if lot.poids_kg %}{{ lot.poids_kg }} kg{% else %}Non indiqué{% endif %}{% if lot.nombre_balles > 1 and lot.poids_kg %}<br><span class="discret">environ {{ lot.poids_moyen_balle }} kg par balle</span>{% endif %}</dd>
     {% if voir_prix %}
       <dt>Prix d'achat total</dt>
       <dd>{{ lot.prix_achat }}</dd>

@@ -11,6 +11,7 @@ Format attendu (fiche SILTEX) :
 Une ligne d'article donne UN lot (un code, un QR code) regroupant ses N balles :
 poids du lot = kg de la ligne, prix du lot = kg × prix au kg.
 
+Le poids peut manquer (il n'est pas inventé : le lot reste sans poids).
 Colonnes facultatives :
 - « Traduction » : libellé en français, imprimé sous le libellé d'origine sur l'étiquette ;
 - « EUR / kg » : sans cette colonne (fiche sans prix), le prix d'achat est laissé à 0.
@@ -48,16 +49,20 @@ class LigneFiche:
     code: str
     libelle: str
     nombre_balles: int
-    poids_total: str          # Decimal sérialisé (stocké en session)
+    poids_total: str          # Decimal sérialisé (stocké en session) ; "" si la fiche ne donne pas le poids
     prix_kg: str
     alertes: list = field(default_factory=list)
     traduction: str = ""
 
+    def poids(self):
+        return Decimal(self.poids_total) if self.poids_total not in ("", None) else None
+
     def poids_moyen_balle(self):
-        return (Decimal(self.poids_total) / self.nombre_balles).quantize(CENTIME, ROUND_HALF_UP)
+        poids = self.poids()
+        return (poids / self.nombre_balles).quantize(CENTIME, ROUND_HALF_UP) if poids else None
 
     def prix_total(self):
-        return prix_balle(Decimal(self.poids_total), self.prix_kg)
+        return prix_balle(self.poids(), self.prix_kg)
 
     def to_dict(self):
         return asdict(self)
@@ -76,7 +81,7 @@ class Fiche:
 
     @property
     def poids_total(self):
-        return sum((Decimal(l.poids_total) for l in self.lignes), Decimal("0"))
+        return sum((l.poids() or Decimal("0") for l in self.lignes), Decimal("0"))
 
 
 def _decimal(valeur):
@@ -89,6 +94,8 @@ def _decimal(valeur):
 
 
 def prix_balle(poids, prix_kg):
+    if not poids:
+        return Decimal("0.00")
     return (poids * Decimal(prix_kg)).quantize(CENTIME, ROUND_HALF_UP)
 
 
@@ -158,7 +165,7 @@ def lire_fiche(fichier):
             code=str(code).strip() if code is not None else "",
             libelle=str(libelle or "").strip(),
             nombre_balles=int(balles),
-            poids_total=str(kg or 0),
+            poids_total=str(kg) if kg else "",
             prix_kg=str(prix_kg or 0),
             traduction=" ".join(str(traduction or "").split()),
         )
@@ -166,8 +173,8 @@ def lire_fiche(fichier):
             ligne.alertes.append("code article manquant")
         if balles != int(balles) or balles < 1:
             ligne.alertes.append("nombre de balles invalide")
-        if not kg or kg <= 0:
-            ligne.alertes.append("poids manquant")
+        if kg is not None and kg < 0:
+            ligne.alertes.append("poids négatif")
         if prix_kg is None:
             ligne.alertes.append("prix au kg manquant")
         fiche.lignes.append(ligne)
