@@ -77,7 +77,7 @@
             {% endifchanged %}
             <tr>
               <td>{{ r.ligne.code }}</td>
-              <td>{{ r.ligne.libelle }}</td>
+              <td>{{ r.ligne.libelle }}{% if r.ligne.traduction %}<br><span class="help">{{ r.ligne.traduction }}</span>{% endif %}</td>
               <td class="nombre">{{ r.ligne.nombre_balles }}</td>
               <td class="nombre">{{ r.ligne.poids_total }}</td>
               <td class="nombre">{{ r.ligne.prix_kg }}</td>

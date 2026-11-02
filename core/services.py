@@ -256,8 +256,11 @@ def image_etiquette(qr_code):
 
     textes = [(lot.code_lot, 40)]
     if lot.reference_fournisseur_id:
-        # Indispensable pour que le fournisseur colle la bonne étiquette sur la bonne balle.
+        # Indispensable pour que le fournisseur colle la bonne étiquette sur la bonne balle :
+        # libellé d'origine (langue du fournisseur), puis sa traduction en français en dessous.
         textes.append((str(lot.reference_fournisseur), 26))
+        if lot.reference_fournisseur.libelle_traduit:
+            textes.append((lot.reference_fournisseur.libelle_traduit, 26))
     textes.append((classement, 24))
     if lot.nombre_balles > 1:
         # Le même QR est collé sur toutes les balles du lot.
@@ -336,10 +339,13 @@ def importer_fiche(conteneur, date_fiche, lignes, classements):
     lots = []
 
     for ligne, classement in zip(lignes, classements):
+        valeurs = {"libelle": ligne.libelle[:200], **classement}
+        if getattr(ligne, "traduction", ""):
+            valeurs["libelle_traduit"] = ligne.traduction[:200]
         reference, _ = ReferencesFournisseurs.objects.update_or_create(
             fournisseur=fournisseur,
             code=ligne.code,
-            defaults={"libelle": ligne.libelle[:200], **classement},
+            defaults=valeurs,
         )
         poids_total = Decimal(ligne.poids_total)
         # Un lot par ligne de la fiche : toutes les balles de la ligne partagent
@@ -358,7 +364,8 @@ def importer_fiche(conteneur, date_fiche, lignes, classements):
                 notes=(
                     f"Fiche fournisseur du {date_fiche or '?'}, article {ligne.code} : "
                     f"{ligne.nombre_balles} balle(s), {ligne.poids_total} kg. "
-                    f"Prix d'achat calculé en EUR ({ligne.prix_kg} €/kg)."
+                    + (f"Prix d'achat calculé en EUR ({ligne.prix_kg} €/kg)." if Decimal(ligne.prix_kg or 0)
+                       else "Prix d'achat non indiqué sur la fiche.")
                 ),
             )
         )

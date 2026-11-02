@@ -534,6 +534,10 @@ class ReferencesFournisseurs(models.Model):
     fournisseur = models.ForeignKey("Fournisseurs", models.DO_NOTHING)
     code = models.CharField("code article", max_length=50)
     libelle = models.CharField("libellé", max_length=200)
+    libelle_traduit = models.CharField(
+        "traduction (français)", max_length=200, blank=True, null=True,
+        help_text="Imprimée sous le libellé d'origine sur l'étiquette.",
+    )
     categorie_lot = models.ForeignKey(CategoriesLots, models.DO_NOTHING, verbose_name="catégorie")
     categorie_produit = models.ForeignKey(
         CategoriesProduits, models.DO_NOTHING, blank=True, null=True, verbose_name="sous-catégorie"

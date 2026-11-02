@@ -10,6 +10,10 @@ Format attendu (fiche SILTEX) :
 
 Une ligne d'article donne UN lot (un code, un QR code) regroupant ses N balles :
 poids du lot = kg de la ligne, prix du lot = kg × prix au kg.
+
+Colonnes facultatives :
+- « Traduction » : libellé en français, imprimé sous le libellé d'origine sur l'étiquette ;
+- « EUR / kg » : sans cette colonne (fiche sans prix), le prix d'achat est laissé à 0.
 """
 import re
 import unicodedata
@@ -47,6 +51,7 @@ class LigneFiche:
     poids_total: str          # Decimal sérialisé (stocké en session)
     prix_kg: str
     alertes: list = field(default_factory=list)
+    traduction: str = ""
 
     def poids_moyen_balle(self):
         return (Decimal(self.poids_total) / self.nombre_balles).quantize(CENTIME, ROUND_HALF_UP)
@@ -117,7 +122,8 @@ def lire_fiche(fichier):
                     "libelle": next(i for i, t in enumerate(textes) if t.startswith("article")),
                     "balles": next(i for i, t in enumerate(textes) if "balle" in t),
                     "kg": textes.index("kg"),
-                    "prix_kg": next(i for i, t in enumerate(textes) if t.replace(" ", "") in ("eur/kg", "€/kg")),
+                    "prix_kg": next((i for i, t in enumerate(textes) if t.replace(" ", "") in ("eur/kg", "€/kg")), None),
+                    "traduction": next((i for i, t in enumerate(textes) if t.startswith("traduction")), None),
                 }
             continue
 
@@ -128,14 +134,15 @@ def lire_fiche(fichier):
         libelle = valeurs[colonnes["libelle"]]
         balles = _decimal(valeurs[colonnes["balles"]])
         kg = _decimal(valeurs[colonnes["kg"]])
-        prix_kg = _decimal(valeurs[colonnes["prix_kg"]])
+        prix_kg = _decimal(valeurs[colonnes["prix_kg"]]) if colonnes["prix_kg"] is not None else Decimal("0")
+        traduction = valeurs[colonnes["traduction"]] if colonnes["traduction"] is not None else None
 
-        if all(v is None for v in valeurs[:6]):
+        if all(v is None for v in valeurs[:8]):
             continue
 
         # Ligne de section : un texte, ni code ni balles
         if code is None and libelle and balles is None and kg is None:
-            if not any(v is not None for i, v in enumerate(valeurs[:6]) if i != colonnes["libelle"]):
+            if not any(v is not None for i, v in enumerate(valeurs[:8]) if i != colonnes["libelle"]):
                 section = str(libelle).strip()
                 continue
 
@@ -153,6 +160,7 @@ def lire_fiche(fichier):
             nombre_balles=int(balles),
             poids_total=str(kg or 0),
             prix_kg=str(prix_kg or 0),
+            traduction=" ".join(str(traduction or "").split()),
         )
         if not ligne.code:
             ligne.alertes.append("code article manquant")
@@ -166,7 +174,7 @@ def lire_fiche(fichier):
 
     if colonnes is None:
         raise ErreurFiche(
-            "Ligne de titres introuvable (colonnes « Code », « Article », « N° de balles », « Kg », « EUR / kg »)."
+            "Ligne de titres introuvable (colonnes « Code », « Article », « N° de balles », « Kg », et si possible « EUR / kg »)."
         )
     if not fiche.lignes:
         raise ErreurFiche("Aucune ligne d'article trouvée dans la fiche.")
@@ -192,7 +200,7 @@ REGLES_ACCESSOIRES = (
     (("chaussure",), "ACCESSOIRES_CHAUSSURES"),
     (("sac",), "ACCESSOIRES_SACS"),
     (("ceinture",), "ACCESSOIRES_CEINTURES"),
-    (("casquette",), "ACCESSOIRES_CASQUETTES"),
+    (("casquette", "bonnet"), "ACCESSOIRES_CASQUETTES"),
     (("foulard", "echarpe"), "ACCESSOIRES_FOULARDS"),
     (("cuir",), "ACCESSOIRES_CUIR"),
 )
@@ -201,9 +209,9 @@ REGLES_TAPISSERIE = (
     (("ameublement",), "TAPISSERIE_TISSUS"),
     (("serviette",), "TAPISSERIE_SERVIETTES"),
     (("drap",), "TAPISSERIE_DRAPS"),
-    (("tapis", "descente de lit"), "TAPISSERIE_TAPIS"),
     (("garnissage", "coussin"), "TAPISSERIE_GARNISSAGE"),
-    (("tapisserie",), "TAPISSERIE_ASSORTIMENT"),
+    (("tapisserie", "linge de maison", "couverture"), "TAPISSERIE_ASSORTIMENT"),   # avant « tapis » (contenu dans « tapisserie »)
+    (("tapis", "descente de lit"), "TAPISSERIE_TAPIS"),
 )
 REGLES_BEBE = (
     (("jean",), "BEBE_JEANS"),
@@ -251,6 +259,11 @@ REGLES_HOMME = (
 )
 
 
+# Reconnus sans sous-catégorie précise : la catégorie est proposée, la sous-catégorie reste à choisir.
+ACCESSOIRES_SANS_DETAIL = ("gant", "jouet", "mouchoir")
+VETEMENTS_MIXTES_SANS_DETAIL = ("blouson", "pull", "sweat", "maille", "gilet")
+
+
 def _appliquer(regles, texte):
     for mots, code in regles:
         if any(m in texte for m in mots):
@@ -263,10 +276,17 @@ def proposer_classement(ligne):
     Retourne (code catégorie, code sous-catégorie, code qualité) proposés pour une ligne,
     chaque élément pouvant être None si rien de fiable n'est trouvé.
     """
-    texte = normaliser(ligne.libelle)
+    texte = normaliser(getattr(ligne, "traduction", "") or ligne.libelle)
     section = normaliser(ligne.section)
 
     qualite = next((q for mot, q in QUALITE_PAR_SECTION if mot in section), None)
+    # « Chaussures d'été, qualité B » : la qualité écrite dans l'article l'emporte sur la section.
+    if "qualite b" in texte:
+        qualite = "DEUXIEME_CHOIX"
+    elif "qualite c" in texte:
+        qualite = None
+    elif "qualite a" in texte:
+        qualite = "PREMIER_CHOIX"
     if "creme" in texte:
         qualite = "CREME"
 
@@ -279,6 +299,8 @@ def proposer_classement(ligne):
     sous_cat = _appliquer(REGLES_ACCESSOIRES, texte)
     if sous_cat:
         return "ACCESSOIRES", sous_cat, qualite
+    if any(m in texte for m in ACCESSOIRES_SANS_DETAIL):
+        return "ACCESSOIRES", None, qualite
     sous_cat = _appliquer(REGLES_TAPISSERIE, texte)
     if sous_cat:
         return "TAPISSERIE", sous_cat, qualite
@@ -298,4 +320,8 @@ def proposer_classement(ligne):
     if homme:
         sous_cat = _appliquer(REGLES_HOMME, texte)
         return "HOMME", sous_cat, qualite
+    if femme:
+        return "FEMME", None, qualite
+    if any(m in texte for m in VETEMENTS_MIXTES_SANS_DETAIL):
+        return "MIXTE", None, qualite
     return None, None, qualite

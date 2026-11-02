@@ -1003,10 +1003,10 @@ class ReferencesFournisseursAdmin(admin.ModelAdmin):
     Catalogue des codes articles fournisseurs et de leur classement.
     Modifier un classement ici s'applique aux prochains imports (pas aux balles déjà créées).
     """
-    list_display = ("code", "libelle", "fournisseur", "categorie_lot", "categorie_produit", "qualite", "prix_vente_balle", "actif")
+    list_display = ("code", "libelle", "libelle_traduit", "fournisseur", "categorie_lot", "categorie_produit", "qualite", "prix_vente_balle", "actif")
     list_editable = ("categorie_lot", "categorie_produit", "qualite", "prix_vente_balle")
     list_filter = ("fournisseur", "categorie_lot", "qualite", "actif")
-    search_fields = ("code", "libelle")
+    search_fields = ("code", "libelle", "libelle_traduit")
     list_select_related = ("fournisseur", "categorie_lot", "categorie_produit__parent", "qualite")
     ordering = ("fournisseur__nom", "code")
     readonly_fields = ("created_at", "updated_at")
