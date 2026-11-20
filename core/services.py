@@ -268,7 +268,6 @@ def image_etiquette(qr_code):
         if lot.poids_kg:
             texte += " · " + format(Decimal(lot.poids_kg).normalize(), "f").replace(".", ",") + " kg"
         textes.append((texte, 22))
-    textes.append((f"Conteneur {lot.conteneur}", 22))
     if qr_code.version > 1:
         textes.append((f"Étiquette version {qr_code.version}", 20))
 
