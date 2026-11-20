@@ -35,8 +35,8 @@
 
   <div class="fiche-resume">
     <div>Fichier<strong>{{ donnees.nom_fichier }}</strong></div>
-    <div>Conteneur choisi<strong>{{ conteneur.numero_conteneur }}</strong></div>
-    <div>Fournisseur<strong>{{ conteneur.fournisseur }}</strong></div>
+    <div>Conteneur<strong>{% if conteneur %}{{ conteneur.numero_conteneur }}{% elif donnees.numero_conteneur %}{{ donnees.numero_conteneur }}{% else %}En attente{% endif %}</strong>{% if not conteneur %}<span class="help">numéro à mettre plus tard</span>{% endif %}</div>
+    <div>Fournisseur<strong>{{ fournisseur }}</strong></div>
     <div>Date de la fiche<strong>{{ donnees.date|default:"—" }}</strong></div>
     <div>Lots à créer (QR codes)<strong>{{ nombre_lots }}</strong></div>
     <div>Balles<strong>{{ nombre_balles }}</strong></div>

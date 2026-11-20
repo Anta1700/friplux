@@ -10,6 +10,8 @@ from django import forms
 from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.db import transaction
+from django.utils import timezone
 from django.utils.html import format_html
 
 from .import_fiche import ErreurFiche, LigneFiche, lire_fiche, normaliser_numero_conteneur, proposer_classement
@@ -17,6 +19,7 @@ from .models import (
     CategoriesLots,
     CategoriesProduits,
     Conteneurs,
+    Fournisseurs,
     Qualites,
     ReferencesFournisseurs,
     sous_categorie_compatible,
@@ -27,11 +30,28 @@ CLE_SESSION = "friplux_import_fiche"
 
 
 class FormulaireFiche(forms.Form):
+    fournisseur = forms.ModelChoiceField(
+        queryset=Fournisseurs.objects.filter(actif=True).order_by("nom"), required=False,
+    )
     conteneur = forms.ModelChoiceField(
-        queryset=Conteneurs.objects.select_related("fournisseur").order_by("-id"),
-        help_text="Le conteneur doit exister (Conteneurs → Ajouter). Son fournisseur est celui de la fiche.",
+        queryset=Conteneurs.objects.select_related("fournisseur").order_by("-id"), required=False,
+        label="Conteneur (facultatif)",
+        help_text="Laissez vide si le numéro n'est pas encore connu : un conteneur « en attente » est créé, "
+                  "vous mettrez son vrai numéro plus tard (Conteneurs → modifier). Il n'est pas imprimé sur les étiquettes.",
     )
     fichier = forms.FileField(label="Fiche Excel (.xlsx)")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        actifs = list(self.fields["fournisseur"].queryset[:2])
+        if len(actifs) == 1:
+            self.fields["fournisseur"].initial = actifs[0].pk
+
+    def clean(self):
+        donnees = super().clean()
+        if not donnees.get("conteneur") and not donnees.get("fournisseur") and "fournisseur" not in self.errors:
+            self.add_error("fournisseur", "Choisissez le fournisseur de la fiche.")
+        return donnees
 
     def clean_fichier(self):
         fichier = self.cleaned_data["fichier"]
@@ -86,8 +106,11 @@ def vue_import(modeladmin, request):
             except ErreurFiche as erreur:
                 formulaire.add_error("fichier", str(erreur))
             else:
+                conteneur = formulaire.cleaned_data["conteneur"]
+                fournisseur = conteneur.fournisseur if conteneur else formulaire.cleaned_data["fournisseur"]
                 request.session[CLE_SESSION] = {
-                    "conteneur_id": formulaire.cleaned_data["conteneur"].pk,
+                    "conteneur_id": conteneur.pk if conteneur else None,
+                    "fournisseur_id": fournisseur.pk,
                     "nom_fichier": formulaire.cleaned_data["fichier"].name,
                     "date": fiche.date,
                     "numero_conteneur": fiche.numero_conteneur,
@@ -150,6 +173,27 @@ def _classement_initial(lignes, fournisseur):
     return initial, statuts
 
 
+def conteneur_pour_import(fournisseur, numero_fiche=""):
+    """
+    Aucun conteneur choisi : celui indiqué sur la fiche s'il y en a un, sinon un conteneur « en attente »
+    dont on mettra le vrai numéro plus tard (il n'est pas imprimé sur les étiquettes).
+    """
+    numero = " ".join(str(numero_fiche or "").split())[:100]
+    if numero:
+        existant = Conteneurs.objects.filter(numero_conteneur=numero, fournisseur=fournisseur).first()
+        if existant:
+            return existant
+        if not Conteneurs.objects.filter(numero_conteneur=numero).exists():
+            return Conteneurs.objects.create(numero_conteneur=numero, fournisseur=fournisseur, statut="EN_PREPARATION",
+                                             date_commande=timezone.localdate())
+    base = f"EN ATTENTE {timezone.localdate():%d/%m/%Y}"
+    numero, n = base, 2
+    while Conteneurs.objects.filter(numero_conteneur=numero).exists():
+        numero, n = f"{base} ({n})", n + 1
+    return Conteneurs.objects.create(numero_conteneur=numero, fournisseur=fournisseur, statut="EN_PREPARATION",
+                                     date_commande=timezone.localdate())
+
+
 def vue_apercu(modeladmin, request):
     """Étapes 2 et 3 : aperçu modifiable, puis création."""
     donnees = request.session.get(CLE_SESSION)
@@ -157,25 +201,27 @@ def vue_apercu(modeladmin, request):
         messages.warning(request, "Aucune fiche en cours : déposez d'abord le fichier.")
         return redirect("admin:core_lots_import")
 
-    conteneur = Conteneurs.objects.select_related("fournisseur").get(pk=donnees["conteneur_id"])
+    conteneur = (Conteneurs.objects.select_related("fournisseur").get(pk=donnees["conteneur_id"])
+                 if donnees.get("conteneur_id") else None)
+    fournisseur = conteneur.fournisseur if conteneur else Fournisseurs.objects.get(pk=donnees["fournisseur_id"])
     lignes = [LigneFiche(**l) for l in donnees["lignes"]]
 
     # Points à vérifier avant import
     alertes_bloquantes = [f"Ligne {l.numero_ligne} ({l.code or l.libelle}) : {', '.join(l.alertes)}" for l in lignes if l.alertes]
     avertissements = []
-    if donnees["numero_conteneur"] and normaliser_numero_conteneur(donnees["numero_conteneur"]) != normaliser_numero_conteneur(conteneur.numero_conteneur):
+    if conteneur and donnees["numero_conteneur"] and normaliser_numero_conteneur(donnees["numero_conteneur"]) != normaliser_numero_conteneur(conteneur.numero_conteneur):
         avertissements.append(
             f"La fiche indique le conteneur « {donnees['numero_conteneur']} », "
             f"mais vous avez choisi « {conteneur.numero_conteneur} »."
         )
-    deja = conteneur.lots.count()
+    deja = conteneur.lots.count() if conteneur else 0
     if deja:
         avertissements.append(
             f"Ce conteneur contient déjà {deja} lot(s). Importer à nouveau la même fiche créerait des doublons. "
             "Pour repartir de zéro, utilisez la commande « reinitialiser_conteneur »."
         )
 
-    initial, statuts = _classement_initial(lignes, conteneur.fournisseur)
+    initial, statuts = _classement_initial(lignes, fournisseur)
 
     if request.method == "POST":
         if "annuler" in request.POST:
@@ -191,7 +237,10 @@ def vue_apercu(modeladmin, request):
             messages.error(request, "Cochez la case de confirmation des avertissements pour importer.")
         elif formset.is_valid():
             classements = [form.cleaned_data for form in formset.forms]
-            lots = importer_fiche(conteneur, donnees["date"], lignes, classements)
+            with transaction.atomic():
+                if conteneur is None:
+                    conteneur = conteneur_pour_import(fournisseur, donnees["numero_conteneur"])
+                lots = importer_fiche(conteneur, donnees["date"], lignes, classements)
             request.session.pop(CLE_SESSION, None)
 
             url_pdf = reverse("core:etiquettes_conteneur", args=[conteneur.pk])
@@ -204,6 +253,15 @@ def vue_apercu(modeladmin, request):
                     len(lots), conteneur.numero_conteneur, sum(l.nombre_balles for l in lots), url_pdf, url_pdf,
                 ),
             )
+            if conteneur.numero_conteneur.startswith("EN ATTENTE"):
+                messages.info(
+                    request,
+                    format_html(
+                        "Quand vous connaîtrez le numéro du conteneur : "
+                        '<a href="{}">ouvrez « {} »</a> et remplacez le numéro.',
+                        reverse("admin:core_conteneurs_change", args=[conteneur.pk]), conteneur.numero_conteneur,
+                    ),
+                )
             url = reverse("admin:core_lots_changelist") + f"?conteneur__id__exact={conteneur.pk}"
             return redirect(url)
         else:
@@ -225,6 +283,7 @@ def vue_apercu(modeladmin, request):
             title="Vérifier la fiche avant import",
             donnees=donnees,
             conteneur=conteneur,
+            fournisseur=fournisseur,
             formset=formset,
             rangees=rangees,
             nombre_lots=len(lignes),
