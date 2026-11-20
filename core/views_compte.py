@@ -7,11 +7,19 @@ from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .comptes import donner_mot_de_passe_provisoire
 from .models import AuditLogs, User
+
+
+def page_mot_de_passe_provisoire(request, employe, mot, retour_url, ajouter_url=None, nouveau=False):
+    """Affiche le mot de passe provisoire, avec un bouton pour le copier."""
+    return render(request, "core/compte_provisoire.html", {
+        "employe": employe, "mot": mot, "retour_url": retour_url, "ajouter_url": ajouter_url, "nouveau": nouveau,
+    })
 
 
 class _DifferentDuProvisoire:
@@ -82,4 +90,4 @@ def compte_mot_de_passe_provisoire(request, pk):
         utilisateur=request.user, action="MOT_DE_PASSE_PROVISOIRE", table_concernee="users", objet_id=employe.pk,
         date_action=timezone.now(), nouvelle_valeur={"pour": employe.username},   # jamais le mot de passe lui-même
     )
-    return render(request, "core/compte_provisoire.html", {"employe": employe, "mot": mot})
+    return page_mot_de_passe_provisoire(request, employe, mot, retour_url=reverse("core:comptes"))

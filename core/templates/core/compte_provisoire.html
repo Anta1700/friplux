@@ -1,18 +1,34 @@
 {% extends "core/base.html" %}
 {% block titre %}Mot de passe provisoire{% endblock %}
 {% block contenu %}
-<h1>Mot de passe provisoire</h1>
+<h1>{% if nouveau %}Compte créé{% else %}Mot de passe provisoire{% endif %}</h1>
 <div class="carte" style="text-align:center">
   <p style="margin-top:0">Pour <b>{{ employe.get_full_name }}</b><br><span class="discret">identifiant : {{ employe.username }}</span></p>
-  <div style="font-size:2.2rem;font-weight:800;letter-spacing:.08em;color:var(--marque);padding:14px;border:2px dashed var(--marque);border-radius:12px;font-family:ui-monospace,Menlo,Consolas,monospace">{{ mot }}</div>
-  <p class="discret" style="margin-bottom:0">Notez-le maintenant : il ne sera plus affiché.</p>
+  <div id="mot" style="font-size:2.2rem;font-weight:800;letter-spacing:.08em;color:var(--marque);padding:14px;border:2px dashed var(--marque);border-radius:12px;font-family:ui-monospace,Menlo,Consolas,monospace">{{ mot }}</div>
+  <button type="button" class="bouton succes" id="copier" style="margin-bottom:0">📋 Copier le mot de passe</button>
+  <p class="discret cache" id="copie-ok" role="status" style="margin:8px 0 0">✓ Copié</p>
+  <p class="discret" style="margin-bottom:0">Envoyez-le à la personne : elle choisira son propre mot de passe à la première connexion. Il ne sera plus affiché.</p>
 </div>
-<div class="carte">
-  <h2>À dire à la personne</h2>
-  <ol style="margin:0;padding-left:20px">
-    <li>Connectez-vous avec votre identifiant <b>{{ employe.username }}</b> et ce mot de passe.</li>
-    <li>Frip'Lux vous demandera de choisir votre nouveau mot de passe.</li>
-  </ol>
-</div>
-<a class="bouton secondaire" href="{% url 'core:comptes' %}">Retour à la liste</a>
+
+
+{% if ajouter_url %}<a class="bouton secondaire" href="{{ ajouter_url }}">Ajouter un autre utilisateur</a>{% endif %}
+<a class="bouton secondaire" href="{{ retour_url }}">Retour à la liste</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var mot = document.getElementById("mot").textContent.trim(), ok = document.getElementById("copie-ok");
+  function montrer() { ok.classList.remove("cache"); }
+  function secours() {   // navigateurs sans presse-papiers moderne
+    var t = document.createElement("textarea"); t.value = mot; document.body.appendChild(t); t.select();
+    try { if (document.execCommand("copy")) montrer(); } catch (e) {}
+    document.body.removeChild(t);
+  }
+  document.getElementById("copier").addEventListener("click", function () {
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(mot).then(montrer, secours);
+    else secours();
+  });
+})();
+</script>
 {% endblock %}

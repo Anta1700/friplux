@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
@@ -39,7 +40,7 @@ from .models import (
     ScansLots,
 )
 from .admin_import import vue_apercu, vue_import
-from .comptes import donner_mot_de_passe_provisoire
+from .comptes import donner_mot_de_passe_provisoire, generer_mot_de_passe_provisoire
 from .stock import progression
 from .montants import format_fcfa
 from .ventes import ErreurVente, annuler_vente, reste_a_payer
@@ -58,14 +59,26 @@ from .services import (
 # UTILISATEURS
 # ============================================================
 
+class CreationEmployeForm(forms.ModelForm):
+    """Création d'un compte : pas de mot de passe à inventer, Frip'Lux en crée un provisoire."""
+
+    class Meta:
+        model = User
+        fields = ("username", "first_name", "last_name", "role", "depot")
+
+
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     ordering = ("username",)
+    add_form = CreationEmployeForm
 
     def save_model(self, request, obj, form, change):
         if not change:
-            # Le mot de passe saisi à la création est provisoire : l'employé choisira le sien.
+            # Mot de passe provisoire créé automatiquement : l'employé choisira le sien à la connexion.
+            mot = generer_mot_de_passe_provisoire()
+            obj.set_password(mot)
             obj.doit_changer_mot_de_passe = True
+            request._mot_provisoire = mot
         super().save_model(request, obj, form, change)
         # L'historique des affectations (user_depots) suit automatiquement le champ « Dépôt ».
         if not change or "depot" in form.changed_data:
@@ -122,6 +135,14 @@ class UserAdmin(DjangoUserAdmin):
     def donner_mot_de_passe_provisoire(self, request, queryset):
         if not request.user.is_superuser:
             raise PermissionDenied
+        if queryset.count() == 1:
+            # Une seule personne : même écran qu'à la création (mot de passe prêt à copier).
+            from .views_compte import page_mot_de_passe_provisoire
+            utilisateur = queryset.get()
+            return page_mot_de_passe_provisoire(
+                request, utilisateur, donner_mot_de_passe_provisoire(utilisateur),
+                retour_url=reverse("admin:core_user_changelist"),
+            )
         for utilisateur in queryset:
             mot = donner_mot_de_passe_provisoire(utilisateur)
             self.message_user(
@@ -133,6 +154,17 @@ class UserAdmin(DjangoUserAdmin):
                 ),
                 messages.SUCCESS,
             )
+
+    def response_add(self, request, obj, post_url_continue=None):
+        mot = getattr(request, "_mot_provisoire", None)
+        if not mot:
+            return super().response_add(request, obj, post_url_continue)
+        from .views_compte import page_mot_de_passe_provisoire
+        return page_mot_de_passe_provisoire(
+            request, obj, mot, nouveau=True,
+            retour_url=reverse("admin:core_user_changelist"),
+            ajouter_url=reverse("admin:core_user_add"),
+        )
 
     def user_change_password(self, request, id, form_url=""):
         # « Modifier le mot de passe » depuis l'admin = mot de passe provisoire, super-administrateur seulement.
@@ -233,9 +265,9 @@ class UserAdmin(DjangoUserAdmin):
                     "last_name",
                     "role",
                     "depot",
-                    "password1",
-                    "password2",
                 ),
+                "description": "Le mot de passe provisoire est créé automatiquement : "
+                               "il s'affiche à l'écran suivant, prêt à copier.",
             },
         ),
     )
