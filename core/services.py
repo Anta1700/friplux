@@ -341,9 +341,11 @@ def importer_fiche(conteneur, date_fiche, lignes, classements):
     lots = []
 
     for ligne, classement in zip(lignes, classements):
+        classement = dict(classement)
+        traduction = " ".join((classement.pop("traduction", None) or getattr(ligne, "traduction", "") or "").split())
         valeurs = {"libelle": ligne.libelle[:200], **classement}
-        if getattr(ligne, "traduction", ""):
-            valeurs["libelle_traduit"] = ligne.traduction[:200]
+        if traduction:
+            valeurs["libelle_traduit"] = traduction[:200]
         reference, _ = ReferencesFournisseurs.objects.update_or_create(
             fournisseur=fournisseur,
             code=ligne.code,

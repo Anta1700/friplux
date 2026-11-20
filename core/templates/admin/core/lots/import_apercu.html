@@ -51,10 +51,11 @@
 
   {% for alerte in alertes_bloquantes %}<div class="bloquant">{{ alerte }}</div>{% endfor %}
   {% for avertissement in avertissements %}<div class="avertissement">{{ avertissement }}</div>{% endfor %}
-  {% if donnees.ignorees %}
+  {% for remarque in remarques %}<div class="avertissement" style="border-left-color:#447e9b;background:#eef5f9;color:#20435a">{{ remarque }}</div>{% endfor %}
+  {% if ignorees %}
     <div class="avertissement">
       Lignes ignorées (sans balles) :
-      {% for l in donnees.ignorees %}« {{ l.texte }} » (ligne {{ l.numero_ligne }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+      {% for l in ignorees %}« {{ l.texte }} » (ligne {{ l.numero_ligne }}){% if not forloop.last %}, {% endif %}{% endfor %}.
     </div>
   {% endif %}
 
@@ -77,7 +78,7 @@
             {% endifchanged %}
             <tr>
               <td>{{ r.ligne.code }}</td>
-              <td>{{ r.ligne.libelle }}{% if r.ligne.traduction %}<br><span class="help">{{ r.ligne.traduction }}</span>{% endif %}</td>
+              <td>{{ r.ligne.libelle }}<br>{{ r.form.traduction.errors }}{{ r.form.traduction }}</td>
               <td class="nombre">{{ r.ligne.nombre_balles }}</td>
               <td class="nombre">{{ r.ligne.poids_total|default:"—" }}</td>
               <td class="nombre">{{ r.ligne.prix_kg }}</td>

@@ -41,6 +41,10 @@ class FormulaireFiche(forms.Form):
 
 
 class FormulaireLigne(forms.Form):
+    traduction = forms.CharField(
+        label="Traduction", required=False, max_length=200,
+        widget=forms.TextInput(attrs={"placeholder": "Traduction (facultatif)", "size": 26}),
+    )
     categorie_lot = forms.ModelChoiceField(
         queryset=CategoriesLots.objects.filter(actif=True).order_by("nom"), label="Catégorie"
     )
@@ -89,6 +93,7 @@ def vue_import(modeladmin, request):
                     "numero_conteneur": fiche.numero_conteneur,
                     "lignes": [ligne.to_dict() for ligne in fiche.lignes],
                     "ignorees": fiche.lignes_ignorees,
+                    "remarques": fiche.remarques,
                 }
                 return redirect("admin:core_lots_import_apercu")
     else:
@@ -103,6 +108,13 @@ def _classement_initial(lignes, fournisseur):
         r.code: r
         for r in ReferencesFournisseurs.objects.filter(fournisseur=fournisseur, code__in=[l.code for l in lignes])
     }
+    # Traductions déjà faites pour le même libellé (ce fournisseur d'abord, puis les autres).
+    traductions = {}
+    for r in (ReferencesFournisseurs.objects.exclude(libelle_traduit__isnull=True).exclude(libelle_traduit="")
+              .order_by("-id").only("fournisseur_id", "libelle", "libelle_traduit")):
+        cle = " ".join(r.libelle.lower().split())
+        if cle not in traductions or r.fournisseur_id == fournisseur.pk:
+            traductions[cle] = r.libelle_traduit
     categories = {c.code: c for c in CategoriesLots.objects.all()}
     sous_categories = {c.code: c for c in CategoriesProduits.objects.all()}
     qualites = {q.code: q for q in Qualites.objects.all()}
@@ -110,11 +122,16 @@ def _classement_initial(lignes, fournisseur):
     initial, statuts = [], []
     for ligne in lignes:
         reference = connues.get(ligne.code)
+        if not ligne.traduction:
+            ligne.traduction = (reference.libelle_traduit if reference and reference.libelle_traduit else
+                                traductions.get(" ".join(ligne.libelle.lower().split()), ""))
         if reference:
+            qualite = qualites.get(ligne.qualite_fiche) if ligne.qualite_fiche else None
             initial.append({
+                "traduction": ligne.traduction,
                 "categorie_lot": reference.categorie_lot_id,
                 "categorie_produit": reference.categorie_produit_id,
-                "qualite": reference.qualite_id,
+                "qualite": qualite.pk if qualite else reference.qualite_id,
             })
             statuts.append("connue")
             continue
@@ -124,6 +141,7 @@ def _classement_initial(lignes, fournisseur):
         sous_categorie = sous_categories.get(code_sous_cat)
         qualite = qualites.get(code_qualite)
         initial.append({
+            "traduction": ligne.traduction,
             "categorie_lot": categorie.pk if categorie else None,
             "categorie_produit": sous_categorie.pk if sous_categorie and sous_categorie.actif else None,
             "qualite": qualite.pk if qualite else None,
@@ -215,6 +233,8 @@ def vue_apercu(modeladmin, request):
             lignes_sans_poids=sum(1 for l in lignes if not l.poids()),
             alertes_bloquantes=alertes_bloquantes,
             avertissements=avertissements,
+            remarques=donnees.get("remarques", []),
+            ignorees=[l for l in donnees.get("ignorees", []) if l.get("raison") != "sous-total"],
             total_statuts=total_statuts,
         ),
     )
