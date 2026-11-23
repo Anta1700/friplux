@@ -23,7 +23,8 @@ STATUTS_RECEVABLES = (StatutLogistique.CREE, StatutLogistique.EN_TRANSIT)
 
 
 def normaliser_code(code):
-    return (code or "").strip().upper()
+    """Majuscules, sans espaces ; « frplx lot 2026 123 » -> « FRPLX-LOT-2026-123 »."""
+    return "-".join((code or "").upper().replace("-", " ").split())
 
 
 def identifier(code):
@@ -40,11 +41,28 @@ def identifier(code):
     if qr:
         return qr.lot, qr, (ResultatScan.OK if qr.actif else ResultatScan.QR_REMPLACE)
 
-    lot = Lots.objects.filter(code_lot=code).first()
+    lot = Lots.objects.filter(code_lot=code).first() or _lot_par_numero(code)
     if lot:
         return lot, lot.qr_codes.filter(actif=True).first(), ResultatScan.OK
 
     return None, None, ResultatScan.INCONNU
+
+
+def _lot_par_numero(code):
+    """
+    Code tapé en raccourci : seulement le numéro de fin (« 123 », « 000123 »), éventuellement
+    avec l'année (« 2026-123 ») ou sans zéros (« FRPLX-LOT-2026-123 »). Le lot le plus récent l'emporte.
+    """
+    import re
+    trouve = re.fullmatch(r"(?:FRPLX-?)?(?:LOT-?)?(?:(\d{4})-)?(\d{1,6})", code)
+    if not trouve:
+        return None
+    annee, numero = trouve.groups()
+    fin = f"-{int(numero):06d}"
+    lots = Lots.objects.filter(code_lot__endswith=fin, code_lot__startswith="FRPLX-LOT-")
+    if annee:
+        lots = lots.filter(code_lot=f"FRPLX-LOT-{annee}{fin}")
+    return lots.order_by("-id").first()
 
 
 # Deux scans du même lot par la même personne à moins de DELAI_DOUBLON secondes :

@@ -33,8 +33,8 @@
 <p class="discret" style="margin-top:-8px">Envoi vers <b>{{ transfert.depot_arrivee.nom }}</b>. Scannez une balle de chaque lot à envoyer.</p>
 <a class="bouton secondaire" href="{% url 'core:transfert_envoi' %}">← Retour à l'envoi</a>
 {% elif mode_vente %}
-<h1>Vendre : scanner la balle</h1>
-<p class="discret" style="margin-top:-8px">Scannez le QR d'une balle que le client achète. Rien n'est compté en réception.</p>
+<h1>Vendre une balle</h1>
+<p class="discret" style="margin-top:-8px">Tapez le code de la balle que le client achète, ou scannez son QR code.</p>
 {% if vente %}<a class="bouton secondaire" href="{% url 'core:ventes' %}">← Retour à la vente en cours</a>{% endif %}
 {% else %}
 <h1>Scanner une balle</h1>
@@ -51,6 +51,16 @@
   {% csrf_token %}
 
   <div class="carte">
+    {% if mode_vente or mode_transfert %}
+    <!-- Saisie du code en premier : si le scan ne marche pas, on vend quand même -->
+    <label for="code" style="font-weight:700">Taper le code de la balle</label>
+    <div class="saisie">
+      <input type="text" name="code" id="code" placeholder="ex. 123" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button type="submit" class="bouton">OK</button>
+    </div>
+    <div class="discret" style="margin:4px 0 0">Le numéro de fin suffit : 123 pour FRPLX-LOT-2026-000123.</div>
+    <div class="ou">ou scanner le QR code</div>
+    {% endif %}
     <!-- 1. Caméra en direct (si le navigateur l'autorise : HTTPS ou localhost) -->
     <div id="bloc-camera" class="cache">
       <div class="viseur">
@@ -72,11 +82,13 @@
     <p class="cache" id="etat-photo" role="status"></p>
 
     <!-- 3. Saisie manuelle -->
+    {% if not mode_vente and not mode_transfert %}
     <div class="ou">ou saisir le code imprimé sous le QR</div>
     <div class="saisie">
-      <input type="text" name="code" id="code" placeholder="FRPLX-LOT-2026-000123" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <input type="text" name="code" id="code" placeholder="ex. 123 ou FRPLX-LOT-2026-000123" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <button type="submit" class="bouton">OK</button>
     </div>
+    {% endif %}
   </div>
 </form>
 
